@@ -1,17 +1,35 @@
 # commodity-analytic
-### Batch Analytics Platform (Airflow)
-**Stack:** Airflow, Python, Postgres, S3/MinIO, Docker, pyspark, Snowflake
 
-**Description:**
-Commodity price data pipeline that extracts commodity prices from multiple sources (Yahoo Finance, Investing.com, Ukrainian trading sites), cleanses and transforms data, and materializes it into a dimensional/OLAP warehouse for predictive analytics.
+**Production-grade commodity analytics pipeline:** Multi-source data extraction → Medallion architecture (bronze/silver/gold layers) → Star schema warehouse → Apache Airflow orchestration → ML-ready feature engineering. Demonstrates modern data stack best practices with data quality validation, monitoring, and operational resilience.
 
-**What to emphasize in CV:**
-- DAG design & orchestration
-- Data modeling (star schema/OLAP)
-- ETL/ELT pipeline development
-- Multi-source data integration
-- Reliability patterns (retries, SLAs, backfill)
-- Data quality & validation
+**Stack:** Apache Airflow 3.0+, Python 3.10+, PostgreSQL/Snowflake, S3/MinIO, PySpark, Pandas, Docker
+
+### Key Features & Skills Demonstrated
+
+**Architecture & Design:**
+- ✅ Medallion architecture (bronze → silver → gold layers)
+- ✅ Star schema OLAP design with SCD Type 2 slowly changing dimensions
+- ✅ Data quality-first approach with multi-stage validation
+- ✅ Modular 7-phase pipeline design for independent testing & deployment
+
+**Data Engineering:**
+- ✅ Multi-source data extraction (Yahoo Finance, Investing.com, Ukrainian markets)
+- ✅ Incremental loading with upsert patterns
+- ✅ Data cleaning, normalization, and enrichment
+- ✅ Comprehensive data quality checks (duplicates, anomalies, freshness)
+- ✅ Feature engineering for ML models (lag, rolling, momentum, seasonal)
+
+**Orchestration & Reliability:**
+- ✅ 5 specialized Airflow DAGs with clear dependencies
+- ✅ Retry logic, exponential backoff, SLA monitoring
+- ✅ Backfill support for historical data
+- ✅ Alerting & comprehensive monitoring
+
+**Production Readiness:**
+- ✅ Structured JSON logging and operation tracking
+- ✅ Health checks and performance monitoring
+- ✅ Slack/email alerting with deduplication
+- ✅ Test framework and integration test patterns
 
 ---
 

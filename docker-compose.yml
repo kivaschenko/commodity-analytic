@@ -1,0 +1,133 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: commodity-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow:
+    build: .
+    container_name: commodity-airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW_HOME: /app
+      AIRFLOW__CORE__DAGS_FOLDER: /app/dags
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: "False"
+      AIRFLOW__CORE__MIN_SERIALIZED_DAG_UPDATE_INTERVAL: 10
+      AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT: 60
+      # Database settings
+      DATABASE_URL: postgresql://airflow:airflow@postgres:5432/commodity_db
+      # S3/MinIO settings (optional)
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MINIO_HOST: minio:9000
+      # Slack/Email notifications (set in .env)
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SMTP_SERVER: ${SMTP_SERVER:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+    volumes:
+      - ./:/app
+      - airflow_logs:/app/logs
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "airflow db check &&
+               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
+               airflow webserver"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  airflow-scheduler:
+    build: .
+    container_name: commodity-airflow-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow:
+        condition: service_healthy
+    environment:
+      AIRFLOW_HOME: /app
+      AIRFLOW__CORE__DAGS_FOLDER: /app/dags
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: "False"
+      DATABASE_URL: postgresql://airflow:airflow@postgres:5432/commodity_db
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MINIO_HOST: minio:9000
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SMTP_SERVER: ${SMTP_SERVER:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+    volumes:
+      - ./:/app
+      - airflow_logs:/app/logs
+    command: airflow scheduler
+
+  minio:
+    image: minio/minio:latest
+    container_name: commodity-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: minio server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL for warehouse (separate from Airflow DB)
+  warehouse-db:
+    image: postgres:16-alpine
+    container_name: commodity-warehouse
+    environment:
+      POSTGRES_USER: warehouse_user
+      POSTGRES_PASSWORD: warehouse_pass
+      POSTGRES_DB: commodity_warehouse
+    volumes:
+      - warehouse_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U warehouse_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  airflow_logs:
+  minio_data:
+  warehouse_data:
+
+networks:
+  default:
+    name: commodity-network

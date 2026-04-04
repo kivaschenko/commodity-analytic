@@ -1,6 +1,7 @@
+export AIRFLOW_HOME=/home/kivashchenko/Projects/commodity-analytic  && \
 export AIRFLOW__CORE__EXECUTOR=LocalExecutor  && \
 export AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False  && \
 export AIRFLOW__CORE__LOAD_EXAMPLES=False  && \
-export AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@localhost:5432/airflow  && \
-export AIRFLOW__CORE__DAGS_FOLDER=/home/ikost/Projects/commodity-analytic/dags
+export AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow_user:teomeo2358@localhost:5432/airflow_db  && \
+export AIRFLOW__CORE__DAGS_FOLDER=/home/kivashchenko/Projects/commodity-analytic/dags
 

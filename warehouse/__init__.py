@@ -4,6 +4,6 @@ Gold layer with star schema for analytics and ML.
 """
 
 from .loader import WarehouseLoader
-from .models import CommodityModel
+from .models import CommodityPriceFact, DimDate, DimCommodity, DimMarket, DimSource, DimCurrency
 
-__all__ = ["WarehouseLoader", "CommodityModel"]
+__all__ = ["WarehouseLoader", "CommodityPriceFact", "DimDate", "DimCommodity", "DimMarket", "DimSource", "DimCurrency"]

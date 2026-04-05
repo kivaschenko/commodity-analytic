@@ -3,40 +3,6 @@ Warehouse Schema - Star schema for OLAP analytics.
 Fact and dimension tables for commodity price analytics.
 """
 
-# FACT TABLE
-FACT_TABLE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS commodity_prices_fact (
-    price_id BIGINT PRIMARY KEY,
-    date_key INT,
-    commodity_key INT,
-    market_key INT,
-    source_key INT,
-    currency_key INT,
-    
-    -- Measures
-    open_price DECIMAL(10, 2),
-    close_price DECIMAL(10, 2),
-    high_price DECIMAL(10, 2),
-    low_price DECIMAL(10, 2),
-    volume DECIMAL(15, 2),
-    
-    -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Foreign Keys
-    FOREIGN KEY (date_key) REFERENCES dim_date(date_key),
-    FOREIGN KEY (commodity_key) REFERENCES dim_commodity(commodity_key),
-    FOREIGN KEY (market_key) REFERENCES dim_market(market_key),
-    FOREIGN KEY (source_key) REFERENCES dim_source(source_key),
-    FOREIGN KEY (currency_key) REFERENCES dim_currency(currency_key)
-);
-
-CREATE INDEX idx_fact_date ON commodity_prices_fact(date_key);
-CREATE INDEX idx_fact_commodity ON commodity_prices_fact(commodity_key);
-CREATE INDEX idx_fact_market ON commodity_prices_fact(market_key);
-CREATE INDEX idx_fact_source ON commodity_prices_fact(source_key);
-"""
 
 # DIMENSION: DATE
 DIM_DATE_SCHEMA = """
@@ -193,21 +159,52 @@ CREATE INDEX idx_monthly_summary_month ON monthly_commodity_summary(year, month)
 CREATE INDEX idx_monthly_summary_commodity ON monthly_commodity_summary(commodity_key);
 """
 
+# FACT TABLE
+FACT_TABLE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS commodity_prices_fact (
+    price_id BIGINT PRIMARY KEY,
+    date_key INT,
+    commodity_key INT,
+    market_key INT,
+    source_key INT,
+    currency_key INT,
+    
+    -- Measures
+    open_price DECIMAL(10, 2),
+    close_price DECIMAL(10, 2),
+    high_price DECIMAL(10, 2),
+    low_price DECIMAL(10, 2),
+    volume DECIMAL(15, 2),
+    
+    -- Metadata
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Foreign Keys
+    FOREIGN KEY (date_key) REFERENCES dim_date(date_key),
+    FOREIGN KEY (commodity_key) REFERENCES dim_commodity(commodity_key),
+    FOREIGN KEY (market_key) REFERENCES dim_market(market_key),
+    FOREIGN KEY (source_key) REFERENCES dim_source(source_key),
+    FOREIGN KEY (currency_key) REFERENCES dim_currency(currency_key)
+);
+
+CREATE INDEX idx_fact_date ON commodity_prices_fact(date_key);
+CREATE INDEX idx_fact_commodity ON commodity_prices_fact(commodity_key);
+CREATE INDEX idx_fact_market ON commodity_prices_fact(market_key);
+CREATE INDEX idx_fact_source ON commodity_prices_fact(source_key);
+"""
+
 # SCD TYPE 2: Track changes over time
 DIMENSION_SCD2_TEMPLATE = """
--- Add to dimension tables for SCD Type 2 tracking
-ALTER TABLE dim_commodity ADD COLUMN (
-    effective_date DATE,
-    end_date DATE,
-    is_current BOOLEAN DEFAULT TRUE,
-    version INT DEFAULT 1
-);
+ALTER TABLE dim_commodity ADD COLUMN IF NOT EXISTS effective_date DATE;
+ALTER TABLE dim_commodity ADD COLUMN IF NOT EXISTS end_date DATE;
+ALTER TABLE dim_commodity ADD COLUMN IF NOT EXISTS is_current BOOLEAN DEFAULT TRUE;
+ALTER TABLE dim_commodity ADD COLUMN IF NOT EXISTS version INT DEFAULT 1;
 """
 
 def get_all_schemas() -> dict:
     """Return all schema definitions."""
     return {
-        "fact_table": FACT_TABLE_SCHEMA,
         "dim_date": DIM_DATE_SCHEMA,
         "dim_commodity": DIM_COMMODITY_SCHEMA,
         "dim_market": DIM_MARKET_SCHEMA,
@@ -216,4 +213,6 @@ def get_all_schemas() -> dict:
         "daily_summary": DAILY_PRICE_SUMMARY_SCHEMA,
         "weekly_summary": WEEKLY_COMMODITY_SUMMARY_SCHEMA,
         "monthly_summary": MONTHLY_COMMODITY_SUMMARY_SCHEMA,
+        "fact_table": FACT_TABLE_SCHEMA,
+        "scd2": DIMENSION_SCD2_TEMPLATE
     }

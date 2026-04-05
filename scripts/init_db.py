@@ -4,7 +4,8 @@ Creates warehouse schema and initial data.
 """
 
 import logging
-from typing import Optional
+from sqlalchemy import create_engine, text
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +27,17 @@ def create_warehouse_schema(connection=None) -> bool:
     from warehouse.schema import get_all_schemas
 
     try:
-        cursor = connection.cursor()
         schemas = get_all_schemas()
 
         for table_name, schema_sql in schemas.items():
             logger.info(f"Creating {table_name}...")
-            cursor.execute(schema_sql)
+            for stmt in schema_sql.split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    connection.execute(text(stmt))
 
         connection.commit()
         logger.info("Warehouse schema created successfully")
-        cursor.close()
         return True
 
     except Exception as e:
@@ -61,16 +63,14 @@ def create_analytical_views(connection=None) -> bool:
     from analytics.views import get_all_views
 
     try:
-        cursor = connection.cursor()
         views = get_all_views()
 
         for view_name, view_sql in views.items():
             logger.info(f"Creating view {view_name}...")
-            cursor.execute(view_sql)
+            connection.execute(text(view_sql))
 
         connection.commit()
         logger.info("Analytical views created successfully")
-        cursor.close()
         return True
 
     except Exception as e:
@@ -94,8 +94,6 @@ def load_reference_data(connection=None) -> bool:
         return False
 
     try:
-        cursor = connection.cursor()
-
         # Load currencies
         currencies = [
             (1, "USD", "US Dollar", "United States"),
@@ -105,10 +103,14 @@ def load_reference_data(connection=None) -> bool:
 
         logger.info("Loading currencies...")
         for currency in currencies:
-            cursor.execute(
-                "INSERT INTO dim_currency (currency_key, currency_code, currency_name, country) VALUES (%s, %s, %s, %s)",
-                currency
-            )
+            connection.execute(text(
+                "INSERT INTO dim_currency (currency_key, currency_code, currency_name, country) VALUES (:currency_key, :currency_code, :currency_name, :country)"
+            ), {
+                "currency_key": currency[0],
+                "currency_code": currency[1],
+                "currency_name": currency[2],
+                "country": currency[3]
+            })
 
         # Load commodities
         commodities = [
@@ -121,10 +123,17 @@ def load_reference_data(connection=None) -> bool:
 
         logger.info("Loading commodities...")
         for commodity in commodities:
-            cursor.execute(
-                "INSERT INTO dim_commodity (commodity_key, commodity_name, commodity_type, category, unit, grade, origin_country) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                commodity
-            )
+            connection.execute(text(
+                "INSERT INTO dim_commodity (commodity_key, commodity_name, commodity_type, category, unit, grade, origin_country) VALUES (:commodity_key, :commodity_name, :commodity_type, :category, :unit, :grade, :origin_country)"
+            ), {
+                "commodity_key": commodity[0],
+                "commodity_name": commodity[1],
+                "commodity_type": commodity[2],
+                "category": commodity[3],
+                "unit": commodity[4],
+                "grade": commodity[5],
+                "origin_country": commodity[6]
+            })
 
         # Load markets
         markets = [
@@ -135,10 +144,16 @@ def load_reference_data(connection=None) -> bool:
 
         logger.info("Loading markets...")
         for market in markets:
-            cursor.execute(
-                "INSERT INTO dim_market (market_key, market_name, exchange, country, timezone, trading_hours) VALUES (%s, %s, %s, %s, %s, %s)",
-                market
-            )
+            connection.execute(text(
+                "INSERT INTO dim_market (market_key, market_name, exchange, country, timezone, trading_hours) VALUES (:market_key, :market_name, :exchange, :country, :timezone, :trading_hours)"
+            ), {
+                "market_key": market[0],
+                "market_name": market[1],
+                "exchange": market[2],
+                "country": market[3],
+                "timezone": market[4],
+                "trading_hours": market[5]
+            })
 
         # Load data sources
         sources = [
@@ -150,14 +165,20 @@ def load_reference_data(connection=None) -> bool:
 
         logger.info("Loading data sources...")
         for source in sources:
-            cursor.execute(
-                "INSERT INTO dim_source (source_key, source_name, parser_type, data_type, reliability_rating, update_frequency, api_endpoint) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                source
-            )
+            connection.execute(text(
+                "INSERT INTO dim_source (source_key, source_name, parser_type, data_type, reliability_rating, update_frequency, api_endpoint) VALUES (:source_key, :source_name, :parser_type, :data_type, :reliability_rating, :update_frequency, :api_endpoint)"
+            ), {
+                "source_key": source[0],
+                "source_name": source[1],
+                "parser_type": source[2],
+                "data_type": source[3],
+                "reliability_rating": source[4],
+                "update_frequency": source[5],
+                "api_endpoint": source[6]
+            })
 
         connection.commit()
         logger.info("Reference data loaded successfully")
-        cursor.close()
         return True
 
     except Exception as e:
@@ -195,10 +216,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
     # TODO: Create database connection and call initialize_database()
-    # from sqlalchemy import create_engine
-    # engine = create_engine(settings.database_url)
-    # connection = engine.connect()
-    # initialize_database(connection)
-    # connection.close()
+
+    url = settings.database_url
+    print(f"Connecting to database at {url}...")
+    engine = create_engine(url)
+    connection = engine.connect()
+    initialize_database(connection)
+    connection.close()
     
     logger.info("Database initialization script loaded")

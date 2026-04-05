@@ -207,6 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 # Airflow
-airflow.db
+airflow.db*
 logs/
-simple_auth_manager_passwords.json.generated
+# simple_auth_manager_passwords.json.generated

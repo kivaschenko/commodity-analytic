@@ -20,6 +20,7 @@ class Settings:
     def __init__(self, env: str = None):
         self.env = Environment(env or os.getenv("ENVIRONMENT", "dev"))
         self._load_settings()
+        print(f"Settings initialized for {self.env.value} environment")
 
     def _load_settings(self) -> None:
         """Load environment-specific settings."""
@@ -34,7 +35,7 @@ class Settings:
         """Development environment settings."""
         self.database_url = os.getenv(
             "DB_URL",
-            "postgresql://airflow:airflow@localhost:5432/airflow"
+            "postgresql+psycopg2://warehouse_user:teomeo2358@localhost:5432/commodity_warehouse"
         )
         self.data_lake_path = os.getenv("DATA_LAKE_PATH", "./data_lake")
         self.warehouse_type = "postgres"

@@ -89,13 +89,13 @@ SELECT
     ROUND(100 * (AVG(cpf_current.close_price) - AVG(cpf_previous.close_price)) 
           / AVG(cpf_previous.close_price), 2) as yoy_change_pct
 FROM commodity_prices_fact cpf_current
-JOIN commodity_prices_fact cpf_previous 
-    ON cpf_current.commodity_key = cpf_previous.commodity_key
-    AND EXTRACT(MONTH FROM cpf_current.date_key) = EXTRACT(MONTH FROM cpf_previous.date_key)
-    AND EXTRACT(YEAR FROM cpf_current.date_key) = EXTRACT(YEAR FROM cpf_previous.date_key) + 1
-JOIN dim_commodity dc ON cpf_current.commodity_key = dc.commodity_key
 JOIN dim_date dd_current ON cpf_current.date_key = dd_current.date_key
-JOIN dim_date dd_previous ON cpf_previous.date_key = dd_previous.date_key
+JOIN dim_date dd_previous ON dd_current.month = dd_previous.month
+    AND dd_current.year = dd_previous.year + 1
+JOIN commodity_prices_fact cpf_previous
+    ON cpf_previous.commodity_key = cpf_current.commodity_key
+    AND cpf_previous.date_key = dd_previous.date_key
+JOIN dim_commodity dc ON cpf_current.commodity_key = dc.commodity_key
 GROUP BY dd_current.month, dc.commodity_name, dd_current.year, dd_previous.year
 ORDER BY dc.commodity_name, current_year DESC;
 """

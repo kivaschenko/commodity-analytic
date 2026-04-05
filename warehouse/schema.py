@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS dim_date (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_dim_date_calendar ON dim_date(calendar_date);
+CREATE INDEX IF NOT EXISTS idx_dim_date_calendar ON dim_date(calendar_date);
 """
 
 # DIMENSION: COMMODITY
@@ -39,8 +39,8 @@ CREATE TABLE IF NOT EXISTS dim_commodity (
     ended_at TIMESTAMP
 );
 
-CREATE INDEX idx_dim_commodity_name ON dim_commodity(commodity_name);
-CREATE INDEX idx_dim_commodity_type ON dim_commodity(commodity_type);
+CREATE INDEX IF NOT EXISTS idx_dim_commodity_name ON dim_commodity(commodity_name);
+CREATE INDEX IF NOT EXISTS idx_dim_commodity_type ON dim_commodity(commodity_type);
 """
 
 # DIMENSION: MARKET
@@ -57,8 +57,8 @@ CREATE TABLE IF NOT EXISTS dim_market (
     ended_at TIMESTAMP
 );
 
-CREATE INDEX idx_dim_market_name ON dim_market(market_name);
-CREATE INDEX idx_dim_market_country ON dim_market(country);
+CREATE INDEX IF NOT EXISTS idx_dim_market_name ON dim_market(market_name);
+CREATE INDEX IF NOT EXISTS idx_dim_market_country ON dim_market(country);
 """
 
 # DIMENSION: SOURCE
@@ -76,8 +76,8 @@ CREATE TABLE IF NOT EXISTS dim_source (
     ended_at TIMESTAMP
 );
 
-CREATE INDEX idx_dim_source_name ON dim_source(source_name);
-CREATE INDEX idx_dim_source_parser ON dim_source(parser_type);
+CREATE INDEX IF NOT EXISTS idx_dim_source_name ON dim_source(source_name);
+CREATE INDEX IF NOT EXISTS idx_dim_source_parser ON dim_source(parser_type);
 """
 
 # DIMENSION: CURRENCY
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS dim_currency (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_dim_currency_code ON dim_currency(currency_code);
+CREATE INDEX IF NOT EXISTS idx_dim_currency_code ON dim_currency(currency_code);
 """
 
 # AGGREGATE TABLES FOR PERFORMANCE
@@ -116,8 +116,8 @@ CREATE TABLE IF NOT EXISTS daily_price_summary (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_daily_summary_date ON daily_price_summary(date_key);
-CREATE INDEX idx_daily_summary_commodity ON daily_price_summary(commodity_key);
+CREATE INDEX IF NOT EXISTS idx_daily_summary_date ON daily_price_summary(date_key);
+CREATE INDEX IF NOT EXISTS idx_daily_summary_commodity ON daily_price_summary(commodity_key);
 """
 
 WEEKLY_COMMODITY_SUMMARY_SCHEMA = """
@@ -135,8 +135,8 @@ CREATE TABLE IF NOT EXISTS weekly_commodity_summary (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_weekly_summary_week ON weekly_commodity_summary(year, week_of_year);
-CREATE INDEX idx_weekly_summary_commodity ON weekly_commodity_summary(commodity_key);
+CREATE INDEX IF NOT EXISTS idx_weekly_summary_week ON weekly_commodity_summary(year, week_of_year);
+CREATE INDEX IF NOT EXISTS idx_weekly_summary_commodity ON weekly_commodity_summary(commodity_key);
 """
 
 MONTHLY_COMMODITY_SUMMARY_SCHEMA = """
@@ -155,8 +155,8 @@ CREATE TABLE IF NOT EXISTS monthly_commodity_summary (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_monthly_summary_month ON monthly_commodity_summary(year, month);
-CREATE INDEX idx_monthly_summary_commodity ON monthly_commodity_summary(commodity_key);
+CREATE INDEX IF NOT EXISTS idx_monthly_summary_month ON monthly_commodity_summary(year, month);
+CREATE INDEX IF NOT EXISTS idx_monthly_summary_commodity ON monthly_commodity_summary(commodity_key);
 """
 
 # FACT TABLE
@@ -188,10 +188,10 @@ CREATE TABLE IF NOT EXISTS commodity_prices_fact (
     FOREIGN KEY (currency_key) REFERENCES dim_currency(currency_key)
 );
 
-CREATE INDEX idx_fact_date ON commodity_prices_fact(date_key);
-CREATE INDEX idx_fact_commodity ON commodity_prices_fact(commodity_key);
-CREATE INDEX idx_fact_market ON commodity_prices_fact(market_key);
-CREATE INDEX idx_fact_source ON commodity_prices_fact(source_key);
+CREATE INDEX IF NOT EXISTS idx_fact_date ON commodity_prices_fact(date_key);
+CREATE INDEX IF NOT EXISTS idx_fact_commodity ON commodity_prices_fact(commodity_key);
+CREATE INDEX IF NOT EXISTS idx_fact_market ON commodity_prices_fact(market_key);
+CREATE INDEX IF NOT EXISTS idx_fact_source ON commodity_prices_fact(source_key);
 """
 
 # SCD TYPE 2: Track changes over time

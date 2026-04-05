@@ -7,7 +7,7 @@ import logging
 from sqlalchemy import create_engine, text
 from config import settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("[init_db]")
 
 
 def create_warehouse_schema(connection=None) -> bool:
@@ -67,7 +67,10 @@ def create_analytical_views(connection=None) -> bool:
 
         for view_name, view_sql in views.items():
             logger.info(f"Creating view {view_name}...")
-            connection.execute(text(view_sql))
+            for stmt in view_sql.split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    connection.execute(text(stmt))
 
         connection.commit()
         logger.info("Analytical views created successfully")
@@ -104,7 +107,7 @@ def load_reference_data(connection=None) -> bool:
         logger.info("Loading currencies...")
         for currency in currencies:
             connection.execute(text(
-                "INSERT INTO dim_currency (currency_key, currency_code, currency_name, country) VALUES (:currency_key, :currency_code, :currency_name, :country)"
+                "INSERT INTO dim_currency (currency_key, currency_code, currency_name, country) VALUES (:currency_key, :currency_code, :currency_name, :country) ON CONFLICT DO NOTHING"
             ), {
                 "currency_key": currency[0],
                 "currency_code": currency[1],
@@ -124,7 +127,7 @@ def load_reference_data(connection=None) -> bool:
         logger.info("Loading commodities...")
         for commodity in commodities:
             connection.execute(text(
-                "INSERT INTO dim_commodity (commodity_key, commodity_name, commodity_type, category, unit, grade, origin_country) VALUES (:commodity_key, :commodity_name, :commodity_type, :category, :unit, :grade, :origin_country)"
+                "INSERT INTO dim_commodity (commodity_key, commodity_name, commodity_type, category, unit, grade, origin_country) VALUES (:commodity_key, :commodity_name, :commodity_type, :category, :unit, :grade, :origin_country) ON CONFLICT DO NOTHING"
             ), {
                 "commodity_key": commodity[0],
                 "commodity_name": commodity[1],
@@ -145,7 +148,7 @@ def load_reference_data(connection=None) -> bool:
         logger.info("Loading markets...")
         for market in markets:
             connection.execute(text(
-                "INSERT INTO dim_market (market_key, market_name, exchange, country, timezone, trading_hours) VALUES (:market_key, :market_name, :exchange, :country, :timezone, :trading_hours)"
+                "INSERT INTO dim_market (market_key, market_name, exchange, country, timezone, trading_hours) VALUES (:market_key, :market_name, :exchange, :country, :timezone, :trading_hours) ON CONFLICT DO NOTHING"
             ), {
                 "market_key": market[0],
                 "market_name": market[1],
@@ -166,7 +169,7 @@ def load_reference_data(connection=None) -> bool:
         logger.info("Loading data sources...")
         for source in sources:
             connection.execute(text(
-                "INSERT INTO dim_source (source_key, source_name, parser_type, data_type, reliability_rating, update_frequency, api_endpoint) VALUES (:source_key, :source_name, :parser_type, :data_type, :reliability_rating, :update_frequency, :api_endpoint)"
+                "INSERT INTO dim_source (source_key, source_name, parser_type, data_type, reliability_rating, update_frequency, api_endpoint) VALUES (:source_key, :source_name, :parser_type, :data_type, :reliability_rating, :update_frequency, :api_endpoint) ON CONFLICT DO NOTHING"
             ), {
                 "source_key": source[0],
                 "source_name": source[1],

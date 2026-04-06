@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r my-constraints.txt
 
 # Copy application code
 COPY . .
@@ -27,4 +27,4 @@ USER appuser
 EXPOSE 8080
 
 # Default command
-CMD ["airflow", "webserver"]
+CMD ["airflow", "api-server", "--port", "8080"]

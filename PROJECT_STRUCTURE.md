@@ -1,10 +1,10 @@
-"""
 Project Structure Summary
+=========================
 
 Complete directory and module layout for commodity analytics data pipeline.
-"""
 
-PROJECT_STRUCTURE = """
+## PROJECT_STRUCTURE
+```
 commodity-analytic/
 ├── dags/                           # Phase 5: Airflow DAGs for orchestration
 │   ├── extraction_dag.py          # Daily data extraction (0 0 * * *)
@@ -76,7 +76,7 @@ commodity-analytic/
 ├── README.md                       # Project overview with roadmap
 ├── LICENSE                         # MIT License
 └── commands.txt                    # Useful command references
-
+```
 
 DATA FLOW ARCHITECTURE
 ======================

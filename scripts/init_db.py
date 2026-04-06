@@ -218,10 +218,7 @@ def initialize_database(connection=None) -> bool:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
-    # TODO: Create database connection and call initialize_database()
-
     url = settings.database_url
-    print(f"Connecting to database at {url}...")
     engine = create_engine(url)
     connection = engine.connect()
     initialize_database(connection)

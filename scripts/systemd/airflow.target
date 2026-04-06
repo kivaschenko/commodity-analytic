@@ -1,0 +1,7 @@
+[Unit]
+Description=Apache Airflow local stack
+Wants=airflow@api-server.service airflow@scheduler.service airflow@dag-processor.service airflow@triggerer.service airflow@celery-worker.service
+After=network-online.target postgresql.service redis-server.service
+
+[Install]
+WantedBy=multi-user.target

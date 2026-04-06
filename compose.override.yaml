@@ -1,0 +1,99 @@
+x-airflow-common:
+  &airflow-common
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  environment:
+    AIRFLOW_HOME: /opt/airflow
+    AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__TEST_CONNECTION: "Enabled"
+    AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: 60
+    AIRFLOW__API_AUTH__JWT_SECRET: foo
+    AIRFLOW__API__SECRET_KEY: bar
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: "fernet_key_placeholder"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-apiserver:8080/execution/"
+
+
+services:
+  airflow-apiserver:
+    <<: *airflow-common
+    # Override ports
+    ports:
+      - "8888:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-worker:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-apiserver:
+        condition: service_healthy
+
+  airflow-triggerer:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+
+  airflow-cli:
+    <<: *airflow-common
+    profiles:
+      - debug
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  postgres:
+    # Not using, instead using PostgreSQL locally running on host machine
+    # This is just a placeholder to satisfy the depends_on condition in airflow services
+
+  redis:
+    # Not using, instead using Redis locally running on host machine
+    # This is just a placeholder to satisfy the depends_on condition in airflow services
+
+  minio:
+    image: minio/minio:latest
+    container_name: commodity-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: minio server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  airflow_logs:
+  minio_data:
+
+networks:
+  default:
+    name: commodity_network

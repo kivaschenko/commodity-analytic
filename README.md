@@ -228,28 +228,268 @@ See Development mode section below for setup instructions.
 
 ## Development mode
 
-Installation of dependencies.
+This repository supports running Apache Airflow 3.1.8 locally (without Docker), while using local PostgreSQL and Redis.
 
-```
-# Using python3.14
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Prerequisites:
+- Python 3.12+
+- PostgreSQL running on localhost:5432
+- Redis running on localhost:6379
 
-Set environ variables to configure Airflow:
-```
-export AIRFLOW__CORE__EXECUTOR=LocalExecutor  && \
-export AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False  && \
-export AIRFLOW__CORE__LOAD_EXAMPLES=False  && \
-export AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://airflow:airflow@postgres:5432/airflow  && \
-export AIRFLOW__CORE__DAGS_FOLDER=/home/ikost/Projects/commodity-analytic/dags
-```
+### 1. Install dependencies
 
-Run Airflow:
-```
-# Check database connection
+~~~bash
+python -m venv venv
+source venv/bin/activate
+
+# Recommended: install from pinned project requirements
+pip install -r requirements.txt -c my-constraints.txt
+~~~
+
+The helper scripts autodetect both `venv` and `.venv`.
+
+### 2. Load Airflow environment variables
+
+Use the helper script:
+
+~~~bash
+source scripts/airflow-env.sh
+~~~
+
+This sets local runtime paths and Airflow 3 variables, including:
+- Celery executor
+- Simple auth manager compatible with this Airflow 3.1.8 install
+- PostgreSQL metadata DB connection
+- Redis broker URL
+- Result backend
+- Execution API server URL
+- Fernet/JWT/API secrets
+
+### 3. One-time setup
+
+Run once per environment (safe to rerun):
+
+~~~bash
+bash scripts/airflow-setup.sh
+~~~
+
+Setup script actions:
+- Verifies PostgreSQL and Redis connectivity
+- Creates Airflow DB role/database if missing
+- Runs database migrations
+- Creates admin user
+- Generates Fernet key if not provided
+
+For production, move Fernet/JWT/API secrets out of the repository and inject them from your shell profile, an environment file, or systemd overrides.
+
+### 4. Start/stop local Airflow services
+
+Start all required Airflow 3 processes:
+
+~~~bash
+bash scripts/airflow-start.sh
+~~~
+
+Other management actions:
+
+~~~bash
+bash scripts/airflow-start.sh status
+bash scripts/airflow-start.sh restart
+bash scripts/airflow-start.sh stop
+~~~
+
+Services started by script:
+- api-server
+- scheduler
+- dag-processor
+- triggerer
+- celery worker
+
+Logs are written to logs/local.
+
+### 5. Run Airflow commands manually (advanced)
+
+If you prefer process-by-process control:
+
+~~~bash
+source scripts/airflow-env.sh
+
+# Core checks
+airflow info
 airflow db check
 
-# Perform 
+# Airflow 3 processes
+airflow api-server
+airflow scheduler
+airflow dag-processor
+airflow triggerer
+airflow celery worker
+~~~
+
+### 6. DAG operations
+
+Useful commands for DAG lifecycle and manual runs:
+
+~~~bash
+source scripts/airflow-env.sh
+
+# List and inspect
+airflow dags list
+airflow dags show extraction_pipeline_dag
+
+# Pause / unpause
+airflow dags pause extraction_pipeline_dag
+airflow dags unpause extraction_pipeline_dag
+
+# Trigger DAG manually
+airflow dags trigger extraction_pipeline_dag
+
+# Trigger with custom run id and logical date
+airflow dags trigger \
+  --run-id manual_$(date +%Y%m%d_%H%M%S) \
+  --logical-date "$(date -Iseconds)" \
+  extraction_pipeline_dag
+
+# List runs and task states
+airflow dags list-runs -d extraction_pipeline_dag
+airflow tasks states-for-dag-run extraction_pipeline_dag <dag_run_id>
+~~~
+
+### 7. API/UI endpoints
+
+- Airflow UI and API: http://localhost:8080
+- Health check: http://localhost:8080/api/v2/version
+
+### 8. Optional: background service with systemd
+
+Ready-to-use systemd assets are available in `scripts/systemd/`.
+
+Install the units:
+
+~~~bash
+sudo bash scripts/systemd/install-airflow-systemd.sh
+~~~
+
+Manage the full stack:
+
+~~~bash
+sudo systemctl start airflow.target
+sudo systemctl stop airflow.target
+sudo systemctl restart airflow.target
+sudo systemctl status airflow.target
+~~~
+
+Manage individual services:
+
+~~~bash
+sudo systemctl status airflow@api-server
+sudo systemctl restart airflow@scheduler
+sudo systemctl restart airflow@dag-processor
+sudo systemctl restart airflow@triggerer
+sudo systemctl restart airflow@celery-worker
+~~~
+
+Inspect logs with journalctl:
+
+~~~bash
+sudo journalctl -u airflow@api-server -f
+sudo journalctl -u airflow@scheduler -f
+~~~
+
+This gives auto-restart and auto-start on reboot on dedicated hosts such as Hetzner.
+
+### 9. Local logs
+
+When using the shell scripts instead of systemd, process logs are written to:
+
+~~~bash
+logs/local/airflow-api-server.log
+logs/local/airflow-scheduler.log
+logs/local/airflow-dag-processor.log
+logs/local/airflow-triggerer.log
+logs/local/airflow-celery-worker.log
+~~~
+
+You can tail them directly:
+
+~~~bash
+tail -f logs/local/airflow-api-server.log
+~~~
+*** Add File: /home/ikost/Projects/commodity-analytic/scripts/systemd/airflow@.service
+
+```
+[Unit]
+Description=Apache Airflow %i
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+PartOf=airflow.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+Group=__RUN_GROUP__
+WorkingDirectory=__PROJECT_DIR__
+Environment=PROJECT_DIR=__PROJECT_DIR__
+Environment=AIRFLOW_ENV_SILENT=1
+ExecStart=/bin/bash -lc 'source "$PROJECT_DIR/scripts/airflow-env.sh"; AIRFLOW_BIN=""; for candidate in "$PROJECT_DIR/venv/bin/airflow" "$PROJECT_DIR/.venv/bin/airflow"; do if [[ -x "$candidate" ]]; then AIRFLOW_BIN="$candidate"; break; fi; done; if [[ -z "$AIRFLOW_BIN" ]]; then echo "Airflow binary not found in $PROJECT_DIR/venv or $PROJECT_DIR/.venv" >&2; exit 1; fi; case "%i" in api-server) exec "$AIRFLOW_BIN" api-server ;; scheduler) exec "$AIRFLOW_BIN" scheduler ;; dag-processor) exec "$AIRFLOW_BIN" dag-processor ;; triggerer) exec "$AIRFLOW_BIN" triggerer ;; celery-worker) exec "$AIRFLOW_BIN" celery worker ;; *) echo "Unknown Airflow instance: %i" >&2; exit 1 ;; esac'
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=airflow.target
+*** Add File: /home/ikost/Projects/commodity-analytic/scripts/systemd/airflow.target
+[Unit]
+Description=Apache Airflow local stack
+Wants=airflow@api-server.service airflow@scheduler.service airflow@dag-processor.service airflow@triggerer.service airflow@celery-worker.service
+After=network-online.target postgresql.service redis-server.service
+
+[Install]
+WantedBy=multi-user.target
+*** Add File: /home/ikost/Projects/commodity-analytic/scripts/systemd/install-airflow-systemd.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RUN_USER="${SUDO_USER:-$USER}"
+RUN_GROUP="$(id -gn "$RUN_USER")"
+SYSTEMD_DIR="/etc/systemd/system"
+
+if [[ "$EUID" -ne 0 ]]; then
+  echo "Run with sudo: sudo bash scripts/systemd/install-airflow-systemd.sh" >&2
+  exit 1
+fi
+
+install_unit() {
+  local source_file="$1"
+  local target_file="$2"
+
+  sed \
+    -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
+    -e "s|__RUN_USER__|$RUN_USER|g" \
+    -e "s|__RUN_GROUP__|$RUN_GROUP|g" \
+    "$source_file" > "$target_file"
+}
+
+install_unit "$SCRIPT_DIR/airflow@.service" "$SYSTEMD_DIR/airflow@.service"
+install_unit "$SCRIPT_DIR/airflow.target" "$SYSTEMD_DIR/airflow.target"
+
+systemctl daemon-reload
+systemctl enable airflow.target
+
+echo "Installed systemd units:"
+echo "  $SYSTEMD_DIR/airflow@.service"
+echo "  $SYSTEMD_DIR/airflow.target"
+echo ""
+echo "Start the Airflow stack with:"
+echo "  sudo systemctl start airflow.target"
+echo ""
+echo "Check service state with:"
+echo "  sudo systemctl status airflow.target"
+echo "  sudo systemctl status airflow@api-server"
+echo ""
+echo "Tail logs with:"
+echo "  sudo journalctl -u airflow@api-server -f"
 ```

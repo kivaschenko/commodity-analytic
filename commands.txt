@@ -1,7 +1,15 @@
-export AIRFLOW_HOME=/home/kivashchenko/Projects/commodity-analytic  && \
-export AIRFLOW__CORE__EXECUTOR=LocalExecutor  && \
+# Source the env file instead of setting vars manually:
+#   source scripts/airflow-env.sh
+#
+# Or set individually (corrected variable names for Airflow 3.1.8):
+export AIRFLOW_HOME=/home/ikost/Projects/commodity-analytic  && \
+export AIRFLOW__CORE__EXECUTOR=CeleryExecutor  && \
 export AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False  && \
-export AIRFLOW__CORE__LOAD_EXAMPLES=False  && \
-export AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow_user:teomeo2358@localhost:5432/airflow_db  && \
-export AIRFLOW__CORE__DAGS_FOLDER=/home/kivashchenko/Projects/commodity-analytic/dags
+export AIRFLOW__CORE__LOAD_EXAMPLES='false'  && \
+export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@localhost:5432/airflow  && \
+export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@localhost:5432/airflow  && \
+export AIRFLOW__CORE__DAGS_FOLDER=/home/ikost/Projects/commodity-analytic/dags  && \
+export AIRFLOW__CELERY__BROKER_URL=redis://:@localhost:6379/0  && \
+export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:8080/execution/  && \
+export AIRFLOW__CORE__FERNET_KEY='<generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">'  && \
 

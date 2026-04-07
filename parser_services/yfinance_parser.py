@@ -255,11 +255,3 @@ class YFinanceParser(BaseParser):
         if price is None or kg_per_unit is None:
             return None
         return price * (1000.0 / kg_per_unit)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-    parser = YFinanceParser(storage_type="minio")
-    result = parser.parse_and_stage(storage_type="minio")
-    logger.info("Execution result: %s", result)

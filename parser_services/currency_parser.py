@@ -331,11 +331,3 @@ class CurrencyParser(BaseParser):
             return float(value)
         except (TypeError, ValueError):
             return None
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-    parser = CurrencyParser(storage_type="minio")
-    result = parser.parse_and_stage(storage_type="minio")
-    logger.info("Execution result: %s", result)

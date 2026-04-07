@@ -464,3 +464,9 @@ services:
 
 You can now start MinIO with:
 `docker-compose --file minio-compose.yml up -d`
+
+## Testing
+
+```
+venv/bin/pytest -q tests/*
+```

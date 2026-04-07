@@ -186,6 +186,50 @@ class YFinanceParser(BaseParser):
         )
         logger.info("Yahoo Finance raw payload staged to %s", staged_path)
 
+    def _stage_records(
+        self,
+        records: List[Dict[str, Any]],
+        storage_type: str,
+        file_ext: str = "json",
+    ) -> str:
+        handler = self.staging_handler
+        if storage_type != self.storage_type:
+            handler = StagingHandler(
+                staging_path=self.bronze_bucket,
+                storage_type=storage_type,
+            )
+
+        enriched = handler.add_staging_metadata(records, source_name=self.source_name)
+        staged_path = handler.stage_raw_data(
+            data=enriched,
+            source_name=self.source_name,
+            file_format=file_ext,
+        )
+        logger.info("Yahoo Finance raw payload staged to %s", staged_path)
+        return staged_path
+
+    def parse_and_stage(self, storage_type: str | None = None) -> Dict[str, Any]:
+        records = self.parse()
+        effective_storage = storage_type or self.storage_type
+        if not records:
+            return {
+                "status": "no_data",
+                "source": self.source_name,
+                "record_count": 0,
+                "storage_type": effective_storage,
+                "staged_path": None,
+            }
+
+        staged_path = self._stage_records(records, storage_type=effective_storage, file_ext="json")
+
+        return {
+            "status": "success",
+            "source": self.source_name,
+            "record_count": len(records),
+            "storage_type": effective_storage,
+            "staged_path": staged_path,
+        }
+
     @staticmethod
     def _fetch_price(ticker: str) -> float | None:
         try:
@@ -217,5 +261,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     parser = YFinanceParser(storage_type="minio")
-    payload = parser.parse()
-    parser.save_results(payload, file_ext="json", storage_type="minio")
+    result = parser.parse_and_stage(storage_type="minio")
+    logger.info("Execution result: %s", result)

@@ -6,8 +6,13 @@ Schedule: Daily at midnight UTC (0 0 * * *)
 """
 
 from datetime import datetime, timedelta
+from pathlib import Path
+import sys
 from airflow.sdk import DAG, task
-from airflow.providers.standard.operators.bash import BashOperator
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 default_args = {
     "owner": "data-engineering",
@@ -32,12 +37,10 @@ with DAG(
     @task()
     def extract_yfinance():
         """Extract commodity prices from Yahoo Finance."""
-        # TODO: Implement YFinance extraction
-        # from parser_services.yfinance_parser import YFinanceParser
-        # parser = YFinanceParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "yfinance"}
+        from parser_services.yfinance_parser import YFinanceParser
+
+        parser = YFinanceParser(storage_type="minio")
+        return parser.parse_and_stage(storage_type="minio")
 
     @task()
     def extract_investingcom():
@@ -101,11 +104,18 @@ with DAG(
     @task()
     def stage_raw_data(consolidated_data):
         """Stage raw data to staging layer (bronze)."""
-        # TODO: Implement staging
-        # from staging import StagingHandler
-        # handler = StagingHandler()
-        # staged_paths = handler.stage_raw_data(consolidated_data)
-        return {"status": "staged", "record_count": 0}
+        from staging.staging_handler import StagingHandler
+
+        yfinance_status = consolidated_data.get("yfinance", {})
+        handler = StagingHandler(storage_type="minio")
+        staging_status = handler.get_staging_status("yfinance")
+
+        return {
+            "status": "staged" if staging_status.get("status") == "active" else "no_data",
+            "record_count": yfinance_status.get("record_count", 0),
+            "latest_file": staging_status.get("latest_file"),
+            "source": "yfinance",
+        }
 
     # Task dependencies
     yfinance = extract_yfinance()

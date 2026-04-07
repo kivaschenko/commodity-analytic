@@ -75,12 +75,10 @@ with DAG(
     @task()
     def extract_currency():
         """Extract currency exchange rates."""
-        # TODO: Implement currency extraction
-        # from parser_services.currency_parser import CurrencyParser
-        # parser = CurrencyParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "currency"}
+        from parser_services.currency_parser import CurrencyParser
+
+        parser = CurrencyParser(storage_type="minio")
+        return parser.parse_and_stage(storage_type="minio")
 
     @task()
     def consolidate_extractions(
@@ -115,6 +113,7 @@ with DAG(
             "record_count": yfinance_status.get("record_count", 0),
             "latest_file": staging_status.get("latest_file"),
             "source": "yfinance",
+            "currency_status": consolidated_data.get("currency", {}),
         }
 
     # Task dependencies

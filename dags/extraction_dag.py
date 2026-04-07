@@ -55,12 +55,10 @@ with DAG(
     @task()
     def extract_graintradecomua():
         """Extract commodity prices from GrainTrade.com.ua."""
-        # TODO: Implement GrainTrade extraction
-        # from parser_services.graintradecomua_parser import GrainTradeComUAParser
-        # parser = GrainTradeComUAParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "graintradecomua"}
+        from parser_services.graintradecomua_parser import GrainTradeComUaParser
+
+        parser = GrainTradeComUaParser(storage_type="minio")
+        return parser.parse_and_stage(storage_type="minio")
 
     @task()
     def extract_apkinform():
@@ -98,7 +96,6 @@ with DAG(
         tripoli_land_data,
     ):
         """Consolidate all extracted data."""
-        # TODO: Combine all data sources
         consolidated = {
             "yfinance": yfinance_data,
             "investingcom": investingcom_data,
@@ -114,17 +111,39 @@ with DAG(
         """Stage raw data to staging layer (bronze)."""
         from staging.staging_handler import StagingHandler
 
-        yfinance_status = consolidated_data.get("yfinance", {})
         handler = StagingHandler(storage_type="minio")
-        staging_status = handler.get_staging_status("yfinance")
+        per_source = {}
+        total_record_count = 0
+        active_staged_sources = 0
+
+        for source, extraction_status in consolidated_data.items():
+            extraction_status = extraction_status or {}
+            parser_status = extraction_status.get("status")
+            record_count = extraction_status.get("record_count", 0)
+            total_record_count += record_count
+
+            staging_status = {"status": "not_extracted"}
+            if parser_status == "success":
+                staging_status = handler.get_staging_status(source)
+                if staging_status.get("status") == "active":
+                    active_staged_sources += 1
+
+            per_source[source] = {
+                "parser_status": parser_status,
+                "record_count": record_count,
+                "staging_status": staging_status.get("status"),
+                "latest_file": staging_status.get("latest_file"),
+                "staged_path": extraction_status.get("staged_path"),
+            }
+
+        overall_status = "staged" if active_staged_sources > 0 else "no_data"
 
         return {
-            "status": "staged" if staging_status.get("status") == "active" else "no_data",
-            "record_count": yfinance_status.get("record_count", 0),
-            "latest_file": staging_status.get("latest_file"),
-            "source": "yfinance",
-            "currency_status": consolidated_data.get("currency", {}),
-            "tripoli_land_status": consolidated_data.get("tripoli_land", {}),
+            "status": overall_status,
+            "total_record_count": total_record_count,
+            "active_staged_sources": active_staged_sources,
+            "source_count": len(per_source),
+            "sources": per_source,
         }
 
     # Task dependencies

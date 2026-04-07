@@ -493,3 +493,52 @@ echo ""
 echo "Tail logs with:"
 echo "  sudo journalctl -u airflow@api-server -f"
 ```
+
+### Running MinIO with Docker Run
+
+The docker run command starts MinIO in a new container with everything configured in one line.
+
+Here's the basic command:
+
+```bash
+docker run -p 9000:9000 -p 9001:9001 \
+  --name minio \
+  -v ~/minio/data:/data \
+  -e "MINIO_ROOT_USER=admin" \
+  -e "MINIO_ROOT_PASSWORD=password123" \
+  quay.io/minio/minio server /data --console-address ":9001"
+```
+
+ - Port `9000` is the API endpoint where your applications connect to upload and download files. This is where S3-compatible clients send their requests.
+
+ - Port `9001` hosts the web console where you manage buckets, set permissions, and monitor storage. You'll use this to verify MinIO is running correctly.
+
+ - The `-v ~/minio/data:/data` flag maps your local directory to the container's storage location. Everything MinIO stores goes into `~/minio/data` on your host machine. When you stop or remove the container, your data stays safe in this directory.
+
+ - Environment variables set your access credentials. `MINIO_ROOT_USER` is your admin username and `MINIO_ROOT_PASSWORD` is the password. These are the credentials you'll use to log into the web console and configure API access.
+
+ - The server /data argument tells MinIO to run in server mode and use /data as the storage directory. The `--console-address ":9001"` flag specifies which port the web console listens on.
+
+
+### Running MinIO with Docker Compose
+
+Create a `minio-compose.yml` file:
+
+```bash
+services:
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - ./minio/data:/data
+    command: server /data --console-address ":9001"
+```
+
+You can now start MinIO with:
+`docker-compose --file minio-compose.yml up -d`

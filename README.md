@@ -414,87 +414,9 @@ You can tail them directly:
 ~~~bash
 tail -f logs/local/airflow-api-server.log
 ~~~
-*** Add File: /home/ikost/Projects/commodity-analytic/scripts/systemd/airflow@.service
 
-```
-[Unit]
-Description=Apache Airflow %i
-After=network-online.target postgresql.service redis-server.service
-Wants=network-online.target
-PartOf=airflow.target
 
-[Service]
-Type=simple
-User=__RUN_USER__
-Group=__RUN_GROUP__
-WorkingDirectory=__PROJECT_DIR__
-Environment=PROJECT_DIR=__PROJECT_DIR__
-Environment=AIRFLOW_ENV_SILENT=1
-ExecStart=/bin/bash -lc 'source "$PROJECT_DIR/scripts/airflow-env.sh"; AIRFLOW_BIN=""; for candidate in "$PROJECT_DIR/venv/bin/airflow" "$PROJECT_DIR/.venv/bin/airflow"; do if [[ -x "$candidate" ]]; then AIRFLOW_BIN="$candidate"; break; fi; done; if [[ -z "$AIRFLOW_BIN" ]]; then echo "Airflow binary not found in $PROJECT_DIR/venv or $PROJECT_DIR/.venv" >&2; exit 1; fi; case "%i" in api-server) exec "$AIRFLOW_BIN" api-server ;; scheduler) exec "$AIRFLOW_BIN" scheduler ;; dag-processor) exec "$AIRFLOW_BIN" dag-processor ;; triggerer) exec "$AIRFLOW_BIN" triggerer ;; celery-worker) exec "$AIRFLOW_BIN" celery worker ;; *) echo "Unknown Airflow instance: %i" >&2; exit 1 ;; esac'
-Restart=always
-RestartSec=5
-TimeoutStopSec=30
-KillSignal=SIGTERM
-
-[Install]
-WantedBy=multi-user.target
-WantedBy=airflow.target
-*** Add File: /home/ikost/Projects/commodity-analytic/scripts/systemd/airflow.target
-[Unit]
-Description=Apache Airflow local stack
-Wants=airflow@api-server.service airflow@scheduler.service airflow@dag-processor.service airflow@triggerer.service airflow@celery-worker.service
-After=network-online.target postgresql.service redis-server.service
-
-[Install]
-WantedBy=multi-user.target
-*** Add File: /home/ikost/Projects/commodity-analytic/scripts/systemd/install-airflow-systemd.sh
-#!/usr/bin/env bash
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-RUN_USER="${SUDO_USER:-$USER}"
-RUN_GROUP="$(id -gn "$RUN_USER")"
-SYSTEMD_DIR="/etc/systemd/system"
-
-if [[ "$EUID" -ne 0 ]]; then
-  echo "Run with sudo: sudo bash scripts/systemd/install-airflow-systemd.sh" >&2
-  exit 1
-fi
-
-install_unit() {
-  local source_file="$1"
-  local target_file="$2"
-
-  sed \
-    -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
-    -e "s|__RUN_USER__|$RUN_USER|g" \
-    -e "s|__RUN_GROUP__|$RUN_GROUP|g" \
-    "$source_file" > "$target_file"
-}
-
-install_unit "$SCRIPT_DIR/airflow@.service" "$SYSTEMD_DIR/airflow@.service"
-install_unit "$SCRIPT_DIR/airflow.target" "$SYSTEMD_DIR/airflow.target"
-
-systemctl daemon-reload
-systemctl enable airflow.target
-
-echo "Installed systemd units:"
-echo "  $SYSTEMD_DIR/airflow@.service"
-echo "  $SYSTEMD_DIR/airflow.target"
-echo ""
-echo "Start the Airflow stack with:"
-echo "  sudo systemctl start airflow.target"
-echo ""
-echo "Check service state with:"
-echo "  sudo systemctl status airflow.target"
-echo "  sudo systemctl status airflow@api-server"
-echo ""
-echo "Tail logs with:"
-echo "  sudo journalctl -u airflow@api-server -f"
-```
-
-### Running MinIO with Docker Run
+### 10. Running MinIO with Docker Run
 
 The docker run command starts MinIO in a new container with everything configured in one line.
 
@@ -520,7 +442,7 @@ docker run -p 9000:9000 -p 9001:9001 \
  - The server /data argument tells MinIO to run in server mode and use /data as the storage directory. The `--console-address ":9001"` flag specifies which port the web console listens on.
 
 
-### Running MinIO with Docker Compose
+### 11. Running MinIO with Docker Compose
 
 Create a `minio-compose.yml` file:
 

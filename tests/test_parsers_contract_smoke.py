@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from parser_services.apk_inform_parser import APKInformParser
 from parser_services.currency_parser import CurrencyParser
 from parser_services.graintradecomua_parser import GrainTradeComUaParser
 from parser_services.tripoli_land_parser import TripoliLandParser
@@ -19,7 +18,6 @@ def _active_parser_instances() -> list[tuple[str, Any]]:
         ("currency", CurrencyParser(storage_type="minio")),
         ("tripoli_land", TripoliLandParser(storage_type="minio")),
         ("graintradecomua", GrainTradeComUaParser(storage_type="minio", parse_history=False)),
-        ("apkinform", APKInformParser(storage_type="minio")),
     ]
 
 
@@ -29,7 +27,8 @@ def test_parse_and_stage_success_contract(monkeypatch: pytest.MonkeyPatch, sourc
     sample_records = [{"note": "ok", "source": source}]
 
     monkeypatch.setattr(parser, "parse", lambda: sample_records)
-    monkeypatch.setattr(parser, "_stage_records", lambda records, storage_type, file_ext="json": f"s3://bronze-layer/{source}/smoke.json")
+    monkeypatch.setattr(parser, "_stage_records", lambda records, storage_type, 
+                        file_ext="json": f"s3://bronze-layer/{source}/smoke.json")
 
     result = parser.parse_and_stage(storage_type="minio")
 

@@ -28,7 +28,7 @@ class StagingHandler:
     - Data timestamping
     """
 
-    def __init__(self, staging_path: Union[str, Path] = None, 
+    def __init__(self, staging_path: Union[str, Path] = '', 
                  storage_type: str = "local"):
         """
         Args:
@@ -78,7 +78,7 @@ class StagingHandler:
         """
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"{source_name}_{timestamp}.{file_format}"
-        if self.storage_type in {"minio", "s3"}:
+        if self.storage_type in {"minio", "s3"} and self.s3_client:
             if file_format != "json":
                 raise ValueError("MinIO staging currently supports only json format")
 
@@ -113,7 +113,7 @@ class StagingHandler:
 
     def add_staging_metadata(self, data: List[Dict], 
                             source_name: str,
-                            extraction_time: datetime = None) -> List[Dict]:
+                            extraction_time: datetime = datetime.now(timezone.utc)) -> List[Dict]:
         """
         Add metadata to raw data records.
         
@@ -125,9 +125,6 @@ class StagingHandler:
         Returns:
             Data with added metadata columns
         """
-        if extraction_time is None:
-            extraction_time = datetime.utcnow()
-
         enriched_data = []
         for record in data:
             enriched = {
@@ -147,7 +144,7 @@ class StagingHandler:
         Returns:
             Status including latest file, row count, etc.
         """
-        if self.storage_type in {"minio", "s3"}:
+        if self.storage_type in {"minio", "s3"} and self.s3_client:
             response = self.s3_client.list_objects_v2(
                 Bucket=self.bronze_bucket,
                 Prefix=f"{source_name}/",

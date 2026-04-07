@@ -51,14 +51,6 @@ with DAG(
         return parser.parse_and_stage(storage_type="minio")
 
     @task()
-    def extract_apkinform():
-        """Extract commodity prices from APK Inform."""
-        from parser_services.apk_inform_parser import APKInformParser
-
-        parser = APKInformParser(storage_type="minio")
-        return parser.parse_and_stage(storage_type="minio")
-
-    @task()
     def extract_currency():
         """Extract currency exchange rates."""
         from parser_services.currency_parser import CurrencyParser
@@ -78,7 +70,6 @@ with DAG(
     def consolidate_extractions(
         yfinance_data,
         graintradecomua_data,
-        apkinform_data,
         currency_data,
         tripoli_land_data,
     ):
@@ -86,7 +77,6 @@ with DAG(
         consolidated = {
             "yfinance": yfinance_data,
             "graintradecomua": graintradecomua_data,
-            "apkinform": apkinform_data,
             "currency": currency_data,
             "tripoli_land": tripoli_land_data,
         }
@@ -135,12 +125,13 @@ with DAG(
     # Task dependencies
     yfinance = extract_yfinance()
     graintradecomua = extract_graintradecomua()
-    apkinform = extract_apkinform()
     currency = extract_currency()
     tripoli_land = extract_tripoli_land()
 
     consolidated = consolidate_extractions(
         yfinance, 
-        graintradecomua, apkinform, currency, tripoli_land
+        graintradecomua, 
+        currency, 
+        tripoli_land,
     )
     staged = stage_raw_data(consolidated)

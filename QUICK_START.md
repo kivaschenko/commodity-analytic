@@ -1,4 +1,4 @@
-# Quick Start Guide
+  # Quick Start Guide
 
 ## Project: Commodity Analytics Data Pipeline
 
@@ -254,19 +254,19 @@ Dashboards & Alerts
 ## 📋 To-Do Checklist
 
 ### Immediate (Week 1)
-- [ ] Connect to PostgreSQL/Snowflake
+- [X] Connect to PostgreSQL/Snowflake
 - [ ] Test each parser
-- [ ] Run init_db.py to create schema
+- [X] Run init_db.py to create schema
 - [ ] Load reference data
 
 ### Short-term (Week 2-3)
-- [ ] Configure Airflow
-- [ ] Deploy DAGs
-- [ ] Test extraction_dag
+- [X] Configure Airflow
+- [X] Deploy DAGs
+- [X] Test extraction_dag
 - [ ] Run historical backfill
 
 ### Medium-term (Week 4)
-- [ ] Set up S3/MinIO
+- [X] Set up S3/MinIO
 - [ ] Configure quality checks
 - [ ] Test full pipeline
 - [ ] Set up monitoring

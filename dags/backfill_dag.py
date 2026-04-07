@@ -29,7 +29,7 @@ with DAG(
     params={
         "start_date": "2025-01-01",
         "end_date": "2025-01-31",
-        "sources": ["yfinance", "graintradecomua", "apkinform"],
+        "sources": ["yfinance", "graintradecomua", "currency", "tripoli_land"],
     },
 ) as dag:
 

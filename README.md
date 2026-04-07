@@ -47,7 +47,6 @@
   - [x] Yahoo Finance parser (yfinance_parser.py)
   - [x] Ukrainian Trading Site parsers:
     - [x] GrainTrade.com.ua (graintradecomua_parser.py)
-    - [x] APK Inform (apk_inform_parser.py)
     - [x] Tripoli Land (tripoli_land_parser.py)
   - [x] Currency parser (currency_parser.py)
 

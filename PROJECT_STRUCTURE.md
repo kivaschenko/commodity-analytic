@@ -17,7 +17,6 @@ commodity-analytic/
 │   ├── base_parser.py             # Abstract base class
 │   ├── yfinance_parser.py         # Yahoo Finance extractor
 │   ├── graintradecomua_parser.py  # Ukrainian grain market
-│   ├── apk_inform_parser.py       # Ukrainian agriculture info
 │   ├── tripoli_land_parser.py     # Ukrainian land prices
 │   └── currency_parser.py         # Exchange rates
 │

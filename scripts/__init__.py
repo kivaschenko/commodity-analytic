@@ -25,7 +25,7 @@ def backfill_date_range(start_date: str,
         True if successful
     """
     if sources is None:
-        sources = ["yfinance", "graintradecomua", "apkinform"]
+        sources = ["yfinance", "graintradecomua", "currency", "tripoli_land"]
 
     logger.info(f"Starting backfill from {start_date} to {end_date}")
 

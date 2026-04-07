@@ -81,12 +81,21 @@ with DAG(
         return parser.parse_and_stage(storage_type="minio")
 
     @task()
+    def extract_tripoli_land():
+        """Extract grain offer prices from Tripoli Land."""
+        from parser_services.tripoli_land_parser import TripoliLandParser
+
+        parser = TripoliLandParser(storage_type="minio")
+        return parser.parse_and_stage(storage_type="minio")
+
+    @task()
     def consolidate_extractions(
         yfinance_data,
         investingcom_data,
         graintradecomua_data,
         apkinform_data,
         currency_data,
+        tripoli_land_data,
     ):
         """Consolidate all extracted data."""
         # TODO: Combine all data sources
@@ -96,6 +105,7 @@ with DAG(
             "graintradecomua": graintradecomua_data,
             "apkinform": apkinform_data,
             "currency": currency_data,
+            "tripoli_land": tripoli_land_data,
         }
         return consolidated
 
@@ -114,6 +124,7 @@ with DAG(
             "latest_file": staging_status.get("latest_file"),
             "source": "yfinance",
             "currency_status": consolidated_data.get("currency", {}),
+            "tripoli_land_status": consolidated_data.get("tripoli_land", {}),
         }
 
     # Task dependencies
@@ -122,8 +133,9 @@ with DAG(
     graintradecomua = extract_graintradecomua()
     apkinform = extract_apkinform()
     currency = extract_currency()
+    tripoli_land = extract_tripoli_land()
 
     consolidated = consolidate_extractions(
-        yfinance, investingcom, graintradecomua, apkinform, currency
+        yfinance, investingcom, graintradecomua, apkinform, currency, tripoli_land
     )
     staged = stage_raw_data(consolidated)

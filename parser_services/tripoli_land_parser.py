@@ -1,18 +1,28 @@
-from pathlib import Path
-from datetime import datetime, timezone
+"""Tripoli Land parser aligned with extraction -> bronze staging flow."""
+
+from __future__ import annotations
+
+import logging
 import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List
 
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
+from dotenv import load_dotenv
+from pandas import DataFrame
 
-from app.parser_services.base_parser import BaseParser
-from app.logger import logger
-from app.storage_services import HetznerStorageService
+from parser_services.base_parser import BaseParser
+from staging.staging_handler import StagingHandler
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://tripoli.land"
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
-COMPANIES = {
+COMPANIES: Dict[str, str] = {
     "nibulon": "Нібулон",
     "kernel": "Кернел",
     "lnz-group": "ЛНЗ Груп",
@@ -37,11 +47,9 @@ COMPANIES = {
     "almeyda-grup-almeida-group": "Алмейда Груп",
     "ooo-agrotreyd-2022": "Агротрейд 2022",
     "dileks-treyd-dilex-trade": "Ділекс Трейд",
-    # Додайте інші компанії за потреби
 }
 
-GRAIN_NAME_MAPPING = {
-    # Cereals
+GRAIN_NAME_MAPPING: Dict[str, str] = {
     "Кукурудза": "Corn",
     "Кукурудза фуражна": "Corn",
     "Кукурудза кремниста": "Corn",
@@ -64,15 +72,11 @@ GRAIN_NAME_MAPPING = {
     "Просо червоне": "Millet",
     "Гречка": "Buckwheat",
     "Полба": "Einkorn wheat",
-
-    # Oilseeds
     "Соняшник": "Sunflower",
     "Соняшник високоолеїновий": "Sunflower high-oleic",
     "Соняшник кондитерський": "Confectionery sunflower seeds",
     "Ріпак": "Rapeseed",
     "Ріпак без гмо": "Rapeseed",
-
-    # Pulses / legumes
     "Горох зелений": "Green peas",
     "Горох жовтий": "Peas",
     "Люпин": "Lupine",
@@ -81,32 +85,24 @@ GRAIN_NAME_MAPPING = {
     "Нут": "Chick-peas",
     "Сочевиця": "Lentil",
     "Сочевиця зелена": "Lentil",
-
-    # Soy
     "Соя": "Soybeans",
     "Соя без гмо": "Soybeans GMO-free",
-
-    # Meals / cakes / oil / byproducts
     "Шрот соняшниковий": "Sunflower seed meal",
     "Жмих соняшниковий": "Sunflower oil cake",
-    "Шрот соєвий": "Soybeen meal",
-    "Жмих сої": "Жмих сої",
-    "Жмих ріпаку": "rapeseed cake",
+    "Шрот соєвий": "Soybean meal",
+    "Жмих сої": "Soybean cake",
+    "Жмих ріпаку": "Rapeseed cake",
     "Шрот ріпаку": "Rapeseed coarse meal",
-    "Жмих кукурудзи": "Жмих кукурудзи",
+    "Жмих кукурудзи": "Corn cake",
     "Висівки пшениці": "Wheat mill offals",
-    "Висівки кукурудзи": "Wheat mill offals",
-
-    # Oils and processed
+    "Висівки кукурудзи": "Corn mill offals",
     "Олія соняшникова": "Sunflower oil",
     "Олія соєва": "Soybean oil",
     "Олія ріпакова": "Rapeseed oil",
     "Олія кукурудзяна": "Corn oil",
     "Борошно": "Wheat flour class 1",
     "Цукор": "Sugar",
-    "Переробка сої": "Pererobka soyi",
-
-    # Other crops / miscellaneous
+    "Переробка сої": "Soy processing",
     "Сорго біле": "Sorghum white",
     "Сорго червоне": "Sorghum red",
     "Віка": "Vetch",
@@ -120,158 +116,216 @@ GRAIN_NAME_MAPPING = {
     "Очеретянка": "Other",
 }
 
-BASE_OUT_DIR = Path(__file__).resolve().parent.parent.parent
-LOCAL_RESULT_DIR = BASE_OUT_DIR / "parsers_results" / "tripoli_land"
-os.makedirs(LOCAL_RESULT_DIR, exist_ok=True)
-TIMESTAMP = ' '.join(datetime.now(timezone.utc).isoformat().split('.')[0].split('T'))
-FILENAME_RESULT = f"{LOCAL_RESULT_DIR}/tripoli_prices_{TIMESTAMP.replace(':', '-').replace(' ', '_')}.csv"
-HETZNER_RESULT_PATH = f"tripoli_prices_{TIMESTAMP.replace(':', '-').replace(' ', '_')}.csv"
-
 
 class TripoliLandParser(BaseParser):
-    def parse(self) -> pd.DataFrame:
-        all_data = pd.DataFrame()
-        for company_slug, company_name in COMPANIES.items():
-            logger.info(f"Parsing prices for company: {company_name} ({company_slug})")
-            data_company = self._parse_prices(company_slug, company_name)
-            if data_company is not None:
-                logger.info(f"Found records: {len(data_company)}")
-                logger.info(data_company.head(3))
-                all_data = pd.concat([all_data, data_company], ignore_index=True)
-            else:
-                logger.info(f"Failed to get data for company: {company_name}")
-        return all_data
-    
-    def save_results(
-        self, results: pd.DataFrame, 
-        filepath: str, 
-        file_ext: str = "csv", 
-        storage_type: str = "local"
-    ) -> None:
-        if storage_type == "local":
-            if file_ext == "csv":
-                results.to_csv(filepath, index=False)
-            elif file_ext == "excel":
-                results.to_excel(filepath, index=False)
-            else:
-                raise ValueError(f"Unsupported file extension: {file_ext}")
-        elif storage_type == "hetzner":
-            temp_filepath = f"/tmp/temp_results.{file_ext}"
-            if file_ext == "csv":
-                results.to_csv(temp_filepath, index=False)
-            elif file_ext == "excel":
-                results.to_excel(temp_filepath, index=False)
-            else:
-                raise ValueError(f"Unsupported file extension: {file_ext}")
-            
-            hetzner_service = HetznerStorageService()
-            hetzner_service.upload_file(
-                file_path=temp_filepath,
-                object_name=os.path.basename(filepath)
+    """Extracts grain offer prices from Tripoli Land and stages raw records to bronze."""
+
+    def __init__(self, source_name: str = "tripoli_land", storage_type: str = "minio") -> None:
+        self.source_name = source_name
+        self.storage_type = storage_type
+        self.bronze_bucket = os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        self.staging_handler = StagingHandler(
+            staging_path=self.bronze_bucket,
+            storage_type=self.storage_type,
+        )
+        self.headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
             )
-            os.remove(temp_filepath)
-        else:
-            raise ValueError(f"Unsupported storage type: {storage_type}")
-
-
-
-    def _parse_prices(self, company_slug: str, company_name: str):
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
         }
-        logger.info(f"Fetching data for company: {company_name} ({company_slug})")
-        # Формуємо URL для компанії
-        url = BASE_URL + f"/ua/companies/{company_slug}"
 
+    def parse(self) -> List[Dict[str, Any]]:
+        extracted_at = datetime.now(timezone.utc).isoformat()
+        rows: List[Dict[str, Any]] = []
+
+        for company_slug, company_name in COMPANIES.items():
+            company_rows = self._parse_company(company_slug, company_name, extracted_at)
+            if not company_rows:
+                rows.append(
+                    {
+                        "company_slug": company_slug,
+                        "company_name": company_name,
+                        "storage_type": None,
+                        "storage_location": None,
+                        "address_region": None,
+                        "culture_ua": None,
+                        "category_name": None,
+                        "price": None,
+                        "price_uah_per_ton": None,
+                        "source_url": f"{BASE_URL}/ua/companies/{company_slug}",
+                        "note": "company_unavailable_or_empty",
+                        "extracted_at": extracted_at,
+                    }
+                )
+                continue
+
+            rows.extend(company_rows)
+
+        logger.info("Fetched %s Tripoli Land records", len(rows))
+        return rows
+
+    def save_results(
+        self,
+        results: "List[Dict[str, Any]] | Any | DataFrame",
+        filepath: str = "",
+        file_ext: str = "json",
+        storage_type: str = "minio",
+    ) -> None:
+        if isinstance(results, DataFrame):
+            records = results.to_dict("records")
+        elif isinstance(results, list):
+            records = results
+        else:
+            logger.warning("Unsupported result type: %s", type(results))
+            return
+
+        if not records:
+            logger.warning("No Tripoli Land records to stage")
+            return
+
+        handler = self.staging_handler
+        if storage_type != self.storage_type:
+            handler = StagingHandler(
+                staging_path=self.bronze_bucket,
+                storage_type=storage_type,
+            )
+
+        enriched = handler.add_staging_metadata(records, source_name=self.source_name)
+        staged_path = handler.stage_raw_data(
+            data=enriched,
+            source_name=self.source_name,
+            file_format=file_ext,
+        )
+        logger.info("Tripoli Land raw payload staged to %s", staged_path)
+
+    def _stage_records(
+        self,
+        records: List[Dict[str, Any]],
+        storage_type: str,
+        file_ext: str = "json",
+    ) -> str:
+        handler = self.staging_handler
+        if storage_type != self.storage_type:
+            handler = StagingHandler(
+                staging_path=self.bronze_bucket,
+                storage_type=storage_type,
+            )
+
+        enriched = handler.add_staging_metadata(records, source_name=self.source_name)
+        staged_path = handler.stage_raw_data(
+            data=enriched,
+            source_name=self.source_name,
+            file_format=file_ext,
+        )
+        logger.info("Tripoli Land raw payload staged to %s", staged_path)
+        return staged_path
+
+    def parse_and_stage(self, storage_type: str | None = None) -> Dict[str, Any]:
+        records = self.parse()
+        effective_storage = storage_type or self.storage_type
+        if not records:
+            return {
+                "status": "no_data",
+                "source": self.source_name,
+                "record_count": 0,
+                "storage_type": effective_storage,
+                "staged_path": None,
+            }
+
+        staged_path = self._stage_records(records, storage_type=effective_storage, file_ext="json")
+
+        return {
+            "status": "success",
+            "source": self.source_name,
+            "record_count": len(records),
+            "storage_type": effective_storage,
+            "staged_path": staged_path,
+        }
+
+    def _parse_company(
+        self,
+        company_slug: str,
+        company_name: str,
+        extracted_at: str,
+    ) -> List[Dict[str, Any]]:
+        url = f"{BASE_URL}/ua/companies/{company_slug}"
         try:
-            logger.info(f"Requesting URL: {url}")
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=self.headers, timeout=20)
             response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # На сайті зазвичай кілька таблиць (Порти та Елеватори)
-            tables = soup.find_all('table')
-            
-            all_data = []
+            soup = BeautifulSoup(response.text, "html.parser")
+            tables = soup.find_all("table")
 
+            records: List[Dict[str, Any]] = []
             for table in tables:
-                # Отримуємо заголовки (культури: Пшениця, Кукурудза тощо)
-                headers_row = table.find('tr')
-
-                # Перевіряємо тип зберігання за заголовком таблиці
-                storage_type = headers_row.th.text.strip() if headers_row and headers_row.th else '' # Порт або Елеватор
-
-                if not storage_type or storage_type not in ['Порт', 'Елеватор']:
+                header_row = table.find("tr")
+                storage_type = self._extract_storage_type(header_row)
+                if storage_type not in {"Порт", "Елеватор"}:
+                    continue
+                if header_row is None:
                     continue
 
-                columns = [th.text.strip() for th in headers_row.find_all(['th', 'td'])[1:]]  # Пропускаємо першу колонку (Назва/Адреса)
-                
-                # Обробляємо рядки з даними
-                rows = table.find_all('tr')[1:]
-                for row in rows:
-                    cells = row.find_all('td')
+                columns = [
+                    th.text.strip()
+                    for th in header_row.find_all(["th", "td"])[1:]
+                ]
+
+                for row in table.find_all("tr")[1:]:
+                    cells = row.find_all("td")
                     if len(cells) < 2:
                         continue
-                    
-                    # First column is combined name/address, others are prices
-                    location_info = cells[0]
-                    storage_name = location_info.b.text.strip() if location_info.b else ''
-                    region = location_info.p.text.strip() if location_info.p else ''
-                    entry = {
-                        "timestamp": TIMESTAMP,
-                        "company": company_name,
-                        "storage_type": storage_type,
-                        "storage_location": storage_name,
-                        "address_region": region
-                    }
-                    
-                    # Додаємо ціни відповідно до заголовків колонок
-                    for i in range(1, len(cells)):
-                        if i < len(columns):
-                            culture_name = columns[i]
-                            price_value = cells[i].text.strip()
-                            entry[culture_name] = price_value
-                    
-                    all_data.append(entry)
 
-            # Створюємо таблицю
-            df = pd.DataFrame(all_data)
+                    location_cell = cells[0]
+                    storage_location = location_cell.b.text.strip() if location_cell.b else ""
+                    address_region = location_cell.p.text.strip() if location_cell.p else ""
 
-            # Очистка: видаляємо порожні символи та '-' і усуваємо пробіли в назвах колонок
-            df = df.replace('-', '')
-            df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+                    for idx in range(1, len(cells)):
+                        if idx >= len(columns):
+                            continue
 
-            # Перетворюємо з широкого формату (колонки-культури) у довгий формат
-            meta_cols = ["timestamp", "company", "storage_type", "storage_location", "address_region"]
-            culture_cols = [c for c in df.columns if c not in meta_cols]
+                        culture_ua = columns[idx].strip()
+                        raw_price = cells[idx].text.strip().replace(" ", "")
+                        if not raw_price or raw_price == "-":
+                            continue
 
-            if culture_cols:
-                df_long = df.melt(id_vars=meta_cols, value_vars=culture_cols, var_name='culture_ua', value_name='price')
-                # Очищаємо пробіли та порожні значення цін
-                df_long['culture_ua'] = df_long['culture_ua'].astype(str).str.strip()
-                df_long = df_long[df_long['price'].notna() & (df_long['price'].astype(str) != '')]
+                        numeric_price = self._to_float(raw_price.replace(",", "."))
 
-                # Мапінг української назви до назви категорії у БД
-                df_long['category_name'] = df_long['culture_ua'].map(GRAIN_NAME_MAPPING).fillna(df_long['culture_ua'])
+                        records.append(
+                            {
+                                "company_slug": company_slug,
+                                "company_name": company_name,
+                                "storage_type": storage_type,
+                                "storage_location": storage_location,
+                                "address_region": address_region,
+                                "culture_ua": culture_ua,
+                                "category_name": GRAIN_NAME_MAPPING.get(culture_ua, culture_ua),
+                                "price": raw_price,
+                                "price_uah_per_ton": numeric_price,
+                                "source_url": url,
+                                "note": "ok",
+                                "extracted_at": extracted_at,
+                            }
+                        )
 
-                return df_long.reset_index(drop=True)
+            return records
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Tripoli parsing failed for %s: %s", company_slug, exc)
+            return []
 
-            return df
+    @staticmethod
+    def _extract_storage_type(header_row: Any) -> str:
+        if not header_row:
+            return ""
+        title_cell = header_row.find("th")
+        if not title_cell:
+            return ""
+        return title_cell.text.strip()
 
-        except Exception as e:
-            logger.info(f"Error during parsing: {e}")
+    @staticmethod
+    def _to_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
             return None
-
-if __name__ == "__main__":
-    parser = TripoliLandParser()
-    results_df = parser.parse()
-    if not results_df.empty:
-        parser.save_results(
-            results=results_df,
-            filepath=HETZNER_RESULT_PATH,
-            file_ext="csv",
-            storage_type="hetzner"
-        )
-        logger.info(f"Results saved to file: {HETZNER_RESULT_PATH}")
-    else:
-        logger.info("No data found to save.")

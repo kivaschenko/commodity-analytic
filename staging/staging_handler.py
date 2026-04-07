@@ -5,11 +5,18 @@ Manages bronze layer (raw data) storage and validation.
 
 import json
 import logging
+import os
 from typing import List, Dict, Any, Union
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
+
+import boto3
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 class StagingHandler:
@@ -28,9 +35,32 @@ class StagingHandler:
             staging_path: Path for staging data (local or S3)
             storage_type: "local", "s3", or "minio"
         """
-        self.staging_path = Path(staging_path) if staging_path else Path("./staging_data")
         self.storage_type = storage_type
-        self.staging_path.mkdir(parents=True, exist_ok=True)
+        self.staging_path = Path(staging_path) if staging_path else Path("./staging_data")
+
+        self.minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        self.minio_access_key = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
+        self.minio_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
+        self.minio_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+        self.bronze_bucket = (
+            str(staging_path)
+            if staging_path and storage_type in {"minio", "s3"}
+            else os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        )
+        self.silver_bucket = os.getenv("MINIO_BUCKET_SILVER", "silver-layer")
+
+        self.s3_client = None
+        if self.storage_type in {"minio", "s3"}:
+            self.s3_client = boto3.client(
+                "s3",
+                endpoint_url=self.minio_endpoint,
+                aws_access_key_id=self.minio_access_key,
+                aws_secret_access_key=self.minio_secret_key,
+                region_name=self.minio_region,
+            )
+        else:
+            self.staging_path.mkdir(parents=True, exist_ok=True)
 
     def stage_raw_data(self, data: List[Dict], 
                       source_name: str, 
@@ -46,13 +76,30 @@ class StagingHandler:
         Returns:
             Path to staged data file
         """
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"{source_name}_{timestamp}.{file_format}"
+        if self.storage_type in {"minio", "s3"}:
+            if file_format != "json":
+                raise ValueError("MinIO staging currently supports only json format")
+
+            object_key = f"{source_name}/{filename}"
+            payload = json.dumps(data, indent=2, default=str).encode("utf-8")
+
+            self.s3_client.put_object(
+                Bucket=self.bronze_bucket,
+                Key=object_key,
+                Body=payload,
+                ContentType="application/json",
+            )
+            staged_path = f"s3://{self.bronze_bucket}/{object_key}"
+            logger.info(f"Staged {len(data)} records to {staged_path}")
+            return staged_path
+
         filepath = self.staging_path / source_name / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
         if file_format == "json":
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, default=str)
         elif file_format == "csv":
             # TODO: Implement CSV writing
@@ -100,6 +147,25 @@ class StagingHandler:
         Returns:
             Status including latest file, row count, etc.
         """
+        if self.storage_type in {"minio", "s3"}:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bronze_bucket,
+                Prefix=f"{source_name}/",
+            )
+            contents = response.get("Contents", [])
+            if not contents:
+                return {"status": "no_data", "source": source_name}
+
+            latest = max(contents, key=lambda obj: obj["LastModified"])
+            return {
+                "status": "active",
+                "source": source_name,
+                "latest_file": f"s3://{self.bronze_bucket}/{latest['Key']}",
+                "file_count": len(contents),
+                "latest_row_count": None,
+                "latest_timestamp": latest["LastModified"].timestamp(),
+            }
+
         source_path = self.staging_path / source_name
         
         if not source_path.exists():

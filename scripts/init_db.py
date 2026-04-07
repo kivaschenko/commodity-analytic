@@ -161,9 +161,8 @@ def load_reference_data(connection=None) -> bool:
         # Load data sources
         sources = [
             (1, "yfinance", "yfinance", "prices", 4, "daily", "https://finance.yahoo.com"),
-            (2, "investingcom", "investingcom", "prices", 3, "daily", None),
-            (3, "graintradecomua", "graintradecomua", "prices", 4, "daily", "https://www.graintrade.com.ua"),
-            (4, "apkinform", "apkinform", "prices", 4, "daily", "https://www.apkinform.com"),
+            (2, "graintradecomua", "graintradecomua", "prices", 4, "daily", "https://www.graintrade.com.ua"),
+            (3, "apkinform", "apkinform", "prices", 4, "daily", "https://www.apkinform.com"),
         ]
 
         logger.info("Loading data sources...")

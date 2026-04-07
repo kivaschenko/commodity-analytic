@@ -29,7 +29,7 @@ with DAG(
     params={
         "start_date": "2025-01-01",
         "end_date": "2025-01-31",
-        "sources": ["yfinance", "investingcom", "graintradecomua", "apkinform"],
+        "sources": ["yfinance", "graintradecomua", "apkinform"],
     },
 ) as dag:
 

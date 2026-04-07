@@ -16,7 +16,6 @@ commodity-analytic/
 ├── parser_services/                # Phase 1: Data source parsers
 │   ├── base_parser.py             # Abstract base class
 │   ├── yfinance_parser.py         # Yahoo Finance extractor
-│   ├── investingcom_parser.py     # Investing.com scraper
 │   ├── graintradecomua_parser.py  # Ukrainian grain market
 │   ├── apk_inform_parser.py       # Ukrainian agriculture info
 │   ├── tripoli_land_parser.py     # Ukrainian land prices
@@ -84,7 +83,7 @@ DATA FLOW ARCHITECTURE
 Data Sources (Raw)
     ↓
 [Phase 1: Extraction]
-  - YFinance, Investing.com, Ukrainian sites
+  - YFinance, Ukrainian sites
   - Currency rates
     ↓
     Bronze Layer (S3/MinIO)

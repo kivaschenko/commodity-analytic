@@ -13,7 +13,7 @@
 - ✅ Modular 7-phase pipeline design for independent testing & deployment
 
 **Data Engineering:**
-- ✅ Multi-source data extraction (Yahoo Finance, Investing.com, Ukrainian markets)
+- ✅ Multi-source data extraction (Yahoo Finance, Ukrainian markets)
 - ✅ Incremental loading with upsert patterns
 - ✅ Data cleaning, normalization, and enrichment
 - ✅ Comprehensive data quality checks (duplicates, anomalies, freshness)
@@ -45,7 +45,6 @@
 
 - [ ] **Data Source Parsers**
   - [x] Yahoo Finance parser (yfinance_parser.py)
-  - [x] Investing.com parser (investingcom_parser.py)
   - [x] Ukrainian Trading Site parsers:
     - [x] GrainTrade.com.ua (graintradecomua_parser.py)
     - [x] APK Inform (apk_inform_parser.py)

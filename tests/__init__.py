@@ -71,11 +71,6 @@ class TestParsers(unittest.TestCase):
         # TODO: Implement test
         pass
 
-    def test_investingcom_parser(self):
-        """Test Investing.com parser."""
-        # TODO: Implement test
-        pass
-
     def test_ukrainian_parsers(self):
         """Test Ukrainian data source parsers."""
         # TODO: Implement test

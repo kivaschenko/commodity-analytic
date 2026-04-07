@@ -43,16 +43,6 @@ with DAG(
         return parser.parse_and_stage(storage_type="minio")
 
     @task()
-    def extract_investingcom():
-        """Extract commodity prices from Investing.com."""
-        # TODO: Implement Investing.com extraction
-        # from parser_services.investingcom_parser import InvestingComParser
-        # parser = InvestingComParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "investingcom"}
-
-    @task()
     def extract_graintradecomua():
         """Extract commodity prices from GrainTrade.com.ua."""
         from parser_services.graintradecomua_parser import GrainTradeComUaParser
@@ -63,12 +53,10 @@ with DAG(
     @task()
     def extract_apkinform():
         """Extract commodity prices from APK Inform."""
-        # TODO: Implement APK Inform extraction
-        # from parser_services.apk_inform_parser import APKInformParser
-        # parser = APKInformParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "apkinform"}
+        from parser_services.apk_inform_parser import APKInformParser
+
+        parser = APKInformParser(storage_type="minio")
+        return parser.parse_and_stage(storage_type="minio")
 
     @task()
     def extract_currency():
@@ -89,7 +77,6 @@ with DAG(
     @task()
     def consolidate_extractions(
         yfinance_data,
-        investingcom_data,
         graintradecomua_data,
         apkinform_data,
         currency_data,
@@ -98,7 +85,6 @@ with DAG(
         """Consolidate all extracted data."""
         consolidated = {
             "yfinance": yfinance_data,
-            "investingcom": investingcom_data,
             "graintradecomua": graintradecomua_data,
             "apkinform": apkinform_data,
             "currency": currency_data,
@@ -148,13 +134,13 @@ with DAG(
 
     # Task dependencies
     yfinance = extract_yfinance()
-    investingcom = extract_investingcom()
     graintradecomua = extract_graintradecomua()
     apkinform = extract_apkinform()
     currency = extract_currency()
     tripoli_land = extract_tripoli_land()
 
     consolidated = consolidate_extractions(
-        yfinance, investingcom, graintradecomua, apkinform, currency, tripoli_land
+        yfinance, 
+        graintradecomua, apkinform, currency, tripoli_land
     )
     staged = stage_raw_data(consolidated)

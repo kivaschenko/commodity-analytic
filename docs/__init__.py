@@ -264,7 +264,7 @@ RUNBOOK_CONTENT = """
 1. Trigger backfill_dag with:
    - start_date: 2025-01-01
    - end_date: 2025-01-31
-   - sources: [yfinance, investingcom, graintradecomua, apkinform]
+    - sources: [yfinance, graintradecomua, apkinform]
 
 2. Monitor execution
 

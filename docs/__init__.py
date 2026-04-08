@@ -29,7 +29,6 @@ Data Sources
 - **Yahoo Finance**: Global commodity prices via yfinance API
 - **Investing.com**: Global financial market data via scraping
 - **GrainTrade.com.ua**: Ukrainian grain market prices
-- **APK Inform**: Ukrainian agricultural information
 - **Currency Rates**: Exchange rate data
 
 ## Technology Stack
@@ -264,7 +263,7 @@ RUNBOOK_CONTENT = """
 1. Trigger backfill_dag with:
    - start_date: 2025-01-01
    - end_date: 2025-01-31
-   - sources: [yfinance, investingcom, graintradecomua, apkinform]
+    - sources: [yfinance, graintradecomua, currency, tripoli_land]
 
 2. Monitor execution
 

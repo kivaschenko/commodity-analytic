@@ -43,34 +43,12 @@ with DAG(
         return parser.parse_and_stage(storage_type="minio")
 
     @task()
-    def extract_investingcom():
-        """Extract commodity prices from Investing.com."""
-        # TODO: Implement Investing.com extraction
-        # from parser_services.investingcom_parser import InvestingComParser
-        # parser = InvestingComParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "investingcom"}
-
-    @task()
     def extract_graintradecomua():
         """Extract commodity prices from GrainTrade.com.ua."""
-        # TODO: Implement GrainTrade extraction
-        # from parser_services.graintradecomua_parser import GrainTradeComUAParser
-        # parser = GrainTradeComUAParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "graintradecomua"}
+        from parser_services.graintradecomua_parser import GrainTradeComUaParser
 
-    @task()
-    def extract_apkinform():
-        """Extract commodity prices from APK Inform."""
-        # TODO: Implement APK Inform extraction
-        # from parser_services.apk_inform_parser import APKInformParser
-        # parser = APKInformParser()
-        # data = parser.parse()
-        # return data
-        return {"status": "pending", "source": "apkinform"}
+        parser = GrainTradeComUaParser(storage_type="minio")
+        return parser.parse_and_stage(storage_type="minio")
 
     @task()
     def extract_currency():
@@ -91,19 +69,14 @@ with DAG(
     @task()
     def consolidate_extractions(
         yfinance_data,
-        investingcom_data,
         graintradecomua_data,
-        apkinform_data,
         currency_data,
         tripoli_land_data,
     ):
         """Consolidate all extracted data."""
-        # TODO: Combine all data sources
         consolidated = {
             "yfinance": yfinance_data,
-            "investingcom": investingcom_data,
             "graintradecomua": graintradecomua_data,
-            "apkinform": apkinform_data,
             "currency": currency_data,
             "tripoli_land": tripoli_land_data,
         }
@@ -114,28 +87,51 @@ with DAG(
         """Stage raw data to staging layer (bronze)."""
         from staging.staging_handler import StagingHandler
 
-        yfinance_status = consolidated_data.get("yfinance", {})
         handler = StagingHandler(storage_type="minio")
-        staging_status = handler.get_staging_status("yfinance")
+        per_source = {}
+        total_record_count = 0
+        active_staged_sources = 0
+
+        for source, extraction_status in consolidated_data.items():
+            extraction_status = extraction_status or {}
+            parser_status = extraction_status.get("status")
+            record_count = extraction_status.get("record_count", 0)
+            total_record_count += record_count
+
+            staging_status = {"status": "not_extracted"}
+            if parser_status == "success":
+                staging_status = handler.get_staging_status(source)
+                if staging_status.get("status") == "active":
+                    active_staged_sources += 1
+
+            per_source[source] = {
+                "parser_status": parser_status,
+                "record_count": record_count,
+                "staging_status": staging_status.get("status"),
+                "latest_file": staging_status.get("latest_file"),
+                "staged_path": extraction_status.get("staged_path"),
+            }
+
+        overall_status = "staged" if active_staged_sources > 0 else "no_data"
 
         return {
-            "status": "staged" if staging_status.get("status") == "active" else "no_data",
-            "record_count": yfinance_status.get("record_count", 0),
-            "latest_file": staging_status.get("latest_file"),
-            "source": "yfinance",
-            "currency_status": consolidated_data.get("currency", {}),
-            "tripoli_land_status": consolidated_data.get("tripoli_land", {}),
+            "status": overall_status,
+            "total_record_count": total_record_count,
+            "active_staged_sources": active_staged_sources,
+            "source_count": len(per_source),
+            "sources": per_source,
         }
 
     # Task dependencies
     yfinance = extract_yfinance()
-    investingcom = extract_investingcom()
     graintradecomua = extract_graintradecomua()
-    apkinform = extract_apkinform()
     currency = extract_currency()
     tripoli_land = extract_tripoli_land()
 
     consolidated = consolidate_extractions(
-        yfinance, investingcom, graintradecomua, apkinform, currency, tripoli_land
+        yfinance, 
+        graintradecomua, 
+        currency, 
+        tripoli_land,
     )
     staged = stage_raw_data(consolidated)

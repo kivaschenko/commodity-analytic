@@ -255,7 +255,7 @@ Dashboards & Alerts
 
 ### Immediate (Week 1)
 - [X] Connect to PostgreSQL/Snowflake
-- [ ] Test each parser
+- [X] Test each parser
 - [X] Run init_db.py to create schema
 - [ ] Load reference data
 

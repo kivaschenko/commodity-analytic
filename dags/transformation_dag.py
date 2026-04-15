@@ -6,8 +6,8 @@ Schedule: Daily after extraction completes
 Depends on: extraction_dag
 
 Flow:
-    1. Load staged data per source (currency, yfinance, graintradecomua, tripoli_land)
-    2. Extract FX rates from currency data (shared dependency)
+  1. Load staged data per source (currency, yfinance, graintradecomua, tripoli_land)
+  2. Extract FX rates from currency data (shared dependency)
   3. [Parallel] Clean each commodity source (remove duplicates, nulls, validate)
   4. [Parallel] Normalize each commodity source (prices, units, commodity names, timestamps)
   5. [Parallel] Enrich each source (add dimensions, market info, price types)

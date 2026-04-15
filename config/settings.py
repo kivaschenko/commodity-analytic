@@ -3,32 +3,43 @@ Configuration Management
 """
 
 import os
+import logging
 from typing import Dict, Any
+from pathlib import Path
 from enum import Enum
+from dotenv import load_dotenv
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+logger.info(f"Loaded environment variables from {BASE_DIR / '.env'}")
 
 class Environment(Enum):
     """Supported environments."""
-    DEV = "dev"
+    DEV = "development"
     STAGING = "staging"
-    PROD = "prod"
+    PROD = "production"
 
 
 class Settings:
     """Application settings based on environment."""
 
-    def __init__(self, env: str = None):
-        self.env = Environment(env or os.getenv("ENVIRONMENT", "dev"))
+    def __init__(self, env: str = 'development'):
+        self.env = Environment(env or os.getenv("ENVIRONMENT", "development").lower())
         self._load_settings()
-        print(f"Settings initialized for {self.env.value} environment")
+        logger.info(f"Settings initialized for {self.env.value} environment")
 
     def _load_settings(self) -> None:
         """Load environment-specific settings."""
         if self.env == Environment.DEV:
+            logger.info("Loading development environment settings")
             self._load_dev_settings()
         elif self.env == Environment.STAGING:
+            logger.info("Loading staging environment settings")
             self._load_staging_settings()
         elif self.env == Environment.PROD:
+            logger.info("Loading production environment settings")
             self._load_prod_settings()
 
     def _load_dev_settings(self) -> None:

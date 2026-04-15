@@ -210,7 +210,3 @@ LINES OF CODE
 - DAG definitions: ~400 lines
 - Configuration: ~100 lines
 - Total skeleton: ~2,150 lines
-"""
-
-if __name__ == "__main__":
-    print(PROJECT_STRUCTURE)

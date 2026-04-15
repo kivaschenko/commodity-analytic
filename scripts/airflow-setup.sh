@@ -53,16 +53,31 @@ echo "    PostgreSQL OK"
 echo "==> Checking Redis..."
 # Parse AIRFLOW__CELERY__BROKER_URL (assumes format: redis://[user:pass@]host:port/db)
 BROKER_URL="${AIRFLOW__CELERY__BROKER_URL}"
-if [[ "$BROKER_URL" =~ redis://([^@]*@)?([^:]+):([0-9]+) ]]; then
+if [[ "$BROKER_URL" =~ redis://([^:@]*:[^@]*@)?([^:]+):([0-9]+) ]]; then
+    REDIS_USERPASS="${BASH_REMATCH[1]}"  # user:pass@ (with @, or empty)
     REDIS_HOST="${BASH_REMATCH[2]}"
     REDIS_PORT="${BASH_REMATCH[3]}"
-    if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping | grep -q PONG; then
+    
+    # Extract password if present (format: user:pass@)
+    REDIS_PASS=""
+    if [[ -n "$REDIS_USERPASS" ]]; then
+        REDIS_PASS="${REDIS_USERPASS%@}"  # Remove trailing @
+        REDIS_PASS="${REDIS_PASS#*:}"     # Remove user: prefix, keep only password
+    fi
+    
+    # Build redis-cli command with optional authentication
+    REDIS_CMD=(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT")
+    if [[ -n "$REDIS_PASS" ]]; then
+        REDIS_CMD+=(-a "$REDIS_PASS")
+    fi
+    
+    if ! "${REDIS_CMD[@]}" ping | grep -q PONG; then
         echo "ERROR: Redis is not accessible at $REDIS_HOST:$REDIS_PORT. Check your broker URL or server." >&2
         exit 1
     fi
     echo "    Redis OK at $REDIS_HOST:$REDIS_PORT"
 else
-    echo "ERROR: Invalid AIRFLOW__CELERY__BROKER_URL format. Expected redis://host:port/db" >&2
+    echo "ERROR: Invalid AIRFLOW__CELERY__BROKER_URL format. Expected redis://[user:pass@]host:port/db" >&2
     exit 1
 fi
 

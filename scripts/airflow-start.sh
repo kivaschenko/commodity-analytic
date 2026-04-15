@@ -43,7 +43,7 @@ mkdir -p "$LOG_DIR"
 # ── Process table ──────────────────────────────────────────────────────────────
 # name | airflow subcommand(s)
 declare -A CMDS=(
-    [api-server]="api-server"
+    [api-server]="api-server --port ${AIRFLOW_API_SERVER_PORT:-8888}"
     [scheduler]="scheduler"
     [dag-processor]="dag-processor"
     [triggerer]="triggerer"
@@ -144,7 +144,7 @@ start_all() {
     echo ""
     echo "Airflow executable:    $AIRFLOW_BIN"
     echo ""
-    echo "API / UI available at:  http://localhost:8080"
+    echo "API / UI available at:  http://localhost:${AIRFLOW_API_SERVER_PORT:-8888}"
     echo "Flower (optional):      $AIRFLOW_BIN celery flower"
     echo ""
     echo "Tail logs with:"

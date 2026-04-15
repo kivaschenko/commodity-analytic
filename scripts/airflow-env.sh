@@ -48,10 +48,12 @@ if [[ -z "$AIRFLOW__CELERY__BROKER_URL" ]]; then
 else
     log "Celery broker set to local Redis on database 2."
 fi
-# ── Execution API (Airflow 3 — points to the local api-server) ────────────────
-export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:8888/execution/
 
-log "Execution API server URL set to http://localhost:8888/execution/"
+# ── Execution API (Airflow 3 — points to the local api-server) ────────────────
+export AIRFLOW_API_SERVER_PORT="${AIRFLOW_API_SERVER_PORT:-8888}"
+export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:${AIRFLOW_API_SERVER_PORT}/execution/
+
+log "Execution API server URL set to http://localhost:${AIRFLOW_API_SERVER_PORT}/execution/"
 
 # ── Security ───────────────────────────────────────────────────────────────────
 # Generate once with:  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

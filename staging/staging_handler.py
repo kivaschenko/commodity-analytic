@@ -28,7 +28,7 @@ class StagingHandler:
     - Data timestamping
     """
 
-    def __init__(self, staging_path: Union[str, Path] = '', 
+    def __init__(self, staging_path: Union[str, Path, None] = None, 
                  storage_type: str = "local"):
         """
         Args:
@@ -113,7 +113,7 @@ class StagingHandler:
 
     def add_staging_metadata(self, data: List[Dict], 
                             source_name: str,
-                            extraction_time: datetime = datetime.now(timezone.utc)) -> List[Dict]:
+                            extraction_time: datetime = None) -> List[Dict]:
         """
         Add metadata to raw data records.
         
@@ -125,6 +125,9 @@ class StagingHandler:
         Returns:
             Data with added metadata columns
         """
+        if extraction_time is None:
+            extraction_time = datetime.now(timezone.utc)
+
         enriched_data = []
         for record in data:
             enriched = {

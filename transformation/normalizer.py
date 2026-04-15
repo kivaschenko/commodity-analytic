@@ -1,11 +1,20 @@
 """
 Data Normalizer - Standardizes data formats and units.
-Normalizes prices, units, currencies, and timestamps.
+Normalizes prices, units, currencies, timestamps, and commodity names.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
+
+# Try to import with relative path for production, fallback to absolute
+try:
+    from config.transformation_mappings import normalize_crop_name
+except ImportError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from config.transformation_mappings import normalize_crop_name
 
 logger = logging.getLogger(__name__)
 
@@ -15,34 +24,94 @@ class DataNormalizer:
     Normalizes commodity data to standard formats:
     - Price normalization (convert all to USD/standard unit)
     - Unit standardization (tons, bushels, etc.)
-    - Currency conversion
+    - Currency conversion with FX rates
+    - Commodity name normalization (Ukrainian → English)
     - Timestamp standardization
     - Numeric precision
     """
 
-    def __init__(self):
+    def __init__(self, fx_rates: Optional[Dict[str, float]] = None):
+        """
+        Initialize normalizer with optional FX rates.
+        
+        Args:
+            fx_rates: Dict mapping "BASE_QUOTE" → rate (e.g., {"USD_UAH": 37.0})
+                     If None, uses default rates
+        """
         self.normalization_log = []
-        # Exchange rates (simplified - should come from external service)
-        self.exchange_rates = {
+        
+        # Default exchange rates (should be overridden with actual rates from currency source)
+        self.default_exchange_rates = {
             "USD": 1.0,
             "EUR": 1.10,  # EUR to USD
-            "UAH": 0.027,  # UAH to USD
+            "UAH": 0.027,  # UAH to USD (default fallback)
+            "GBP": 1.27,
         }
-        # Unit conversions
+        
+        # FX rates as dict: can pass {"USD_UAH": 37.0} or update later
+        self.fx_rates = fx_rates or {}
+        self.exchange_rates = self.default_exchange_rates.copy()
+        
+        # Unit conversions to tons
         self.unit_conversions = {
             "ton": 1.0,
             "tonne": 1.0,
             "bushel": 0.0272155,  # bushel to ton
+            "cwt": 0.05,  # hundredweight to ton
             "kg": 0.001,
             "lb": 0.000453592,
         }
+
+    def set_fx_rate(self, base_currency: str, quote_currency: str, rate: float) -> None:
+        """
+        Set exchange rate for currency pair.
+        
+        Args:
+            base_currency: From currency (e.g., 'USD')
+            quote_currency: To currency (e.g., 'UAH')
+            rate: Exchange rate (e.g., 37.0 for 1 USD = 37 UAH)
+        """
+        self.exchange_rates[f"{base_currency}_{quote_currency}"] = rate
+        # Also set the inverse for conversions
+        if rate > 0:
+            self.exchange_rates[f"{quote_currency}_{base_currency}"] = 1 / rate
+        logger.info(f"Set FX rate: 1 {base_currency} = {rate} {quote_currency}")
+
+    def _get_currency_rate(self, from_currency: str, to_currency: str) -> float:
+        """
+        Get exchange rate between two currencies.
+        
+        Args:
+            from_currency: Source currency code
+            to_currency: Target currency code
+        
+        Returns:
+            Exchange rate (default 1.0 if not found)
+        """
+        if from_currency == to_currency:
+            return 1.0
+        
+        # Try explicit pair first
+        pair_key = f"{from_currency}_{to_currency}"
+        if pair_key in self.exchange_rates:
+            return self.exchange_rates[pair_key]
+        
+        # Try base currency rates
+        from_rate = self.exchange_rates.get(from_currency, 1.0)
+        to_rate = self.exchange_rates.get(to_currency, 1.0)
+        
+        if from_rate and to_rate:
+            return to_rate / from_rate
+        
+        logger.warning(f"FX rate not found for {from_currency} → {to_currency}, using 1.0")
+        return 1.0
 
     def normalize_prices(self, data: List[Dict],
                         price_column: str = "price",
                         currency_column: str = "currency",
                         base_currency: str = "USD") -> List[Dict]:
         """
-        Convert all prices to base currency.
+        Convert all prices to base currency using FX rates.
         
         Args:
             data: Records with prices in various currencies
@@ -55,26 +124,41 @@ class DataNormalizer:
         """
         normalized = []
         conversions_count = 0
+        errors = 0
 
-        for record in normalized:
+        for record in data:
             normalized_record = record.copy()
             
             if price_column in record and currency_column in record:
-                original_price = record[price_column]
-                original_currency = record[currency_column]
+                try:
+                    original_price = record[price_column]
+                    original_currency = record[currency_column]
+                    
+                    if original_price is None:
+                        errors += 1
+                        continue
 
-                if original_currency != base_currency:
-                    rate = self.exchange_rates.get(original_currency, 1.0)
-                    normalized_record[price_column] = original_price * rate
-                    normalized_record[f"{price_column}_base_currency"] = base_currency
-                    conversions_count += 1
+                    if original_currency != base_currency:
+                        rate = self._get_currency_rate(original_currency, base_currency)
+                        normalized_record[price_column] = round(original_price * rate, 4)
+                        normalized_record[f"{price_column}_currency"] = base_currency
+                        conversions_count += 1
+                    else:
+                        normalized_record[f"{price_column}_currency"] = original_currency
+
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error normalizing price {original_price}: {e}")
+                    errors += 1
+                    continue
 
             normalized.append(normalized_record)
 
         self.normalization_log.append({
             "operation": "normalize_prices",
             "base_currency": base_currency,
-            "conversions": conversions_count
+            "conversions": conversions_count,
+            "errors": errors,
+            "total_records": len(data)
         })
 
         return normalized
@@ -103,11 +187,11 @@ class DataNormalizer:
             
             if quantity_column in record and unit_column in record:
                 original_qty = record[quantity_column]
-                original_unit = record[unit_column].lower()
+                original_unit = record[unit_column].lower().strip() if isinstance(record[unit_column], str) else str(record[unit_column])
 
                 if original_unit != target_unit:
                     conversion_factor = self.unit_conversions.get(original_unit, 1.0)
-                    normalized_record[quantity_column] = original_qty * conversion_factor
+                    normalized_record[quantity_column] = round(original_qty * conversion_factor, 2)
                     normalized_record[unit_column] = target_unit
                     conversions_count += 1
 
@@ -121,22 +205,80 @@ class DataNormalizer:
 
         return normalized
 
+    def normalize_commodity_names(self, data: List[Dict],
+                                 commodity_column: str = "commodity") -> List[Dict]:
+        """
+        Normalize commodity names to canonical English form.
+        Maps Ukrainian names and variants to canonical names.
+        
+        Args:
+            data: Records with commodity names in various languages
+            commodity_column: Column with commodity names
+        
+        Returns:
+            Data with normalized commodity names
+        """
+        normalized = []
+        normalized_count = 0
+        unmapped_count = 0
+        unknown_names = set()
+
+        for record in data:
+            normalized_record = record.copy()
+            
+            if commodity_column in record:
+                raw_name = record[commodity_column]
+                canonical_name = normalize_crop_name(raw_name)
+                
+                if canonical_name:
+                    normalized_record[commodity_column] = canonical_name
+                    normalized_record[f"{commodity_column}_source"] = raw_name
+                    normalized_count += 1
+                else:
+                    unmapped_count += 1
+                    unknown_names.add(raw_name)
+                    logger.debug(f"Could not normalize commodity name: {raw_name}")
+
+            normalized.append(normalized_record)
+
+        self.normalization_log.append({
+            "operation": "normalize_commodity_names",
+            "normalized": normalized_count,
+            "unmapped": unmapped_count,
+            "unknown_names": list(unknown_names)[:10]  # Log first 10 unknown names
+        })
+
+        return normalized
+
     def normalize_timestamps(self, data: List[Dict],
                             timestamp_column: str = "date",
                             output_format: str = "%Y-%m-%d") -> List[Dict]:
         """
         Standardize all timestamps to ISO format.
+        Handles multiple input formats.
         
         Args:
             data: Records with various timestamp formats
             timestamp_column: Column with timestamps
-            output_format: Target format
+            output_format: Target format (default: YYYY-MM-DD)
         
         Returns:
             Data with normalized timestamps
         """
         normalized = []
         parse_errors = 0
+        
+        # Common timestamp formats to try
+        formats_to_try = [
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%d-%m-%Y",
+            "%d.%m.%Y",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S.%f%z",
+            "%d.%m.%Y %H:%M",
+        ]
 
         for record in data:
             normalized_record = record.copy()
@@ -144,22 +286,21 @@ class DataNormalizer:
             if timestamp_column in record:
                 ts_value = record[timestamp_column]
                 
-                # Try parsing if it's a string
-                if isinstance(ts_value, str):
-                    try:
-                        # Try common formats
-                        for fmt in ["%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d.%m.%Y"]:
-                            try:
-                                parsed_ts = datetime.strptime(ts_value, fmt)
-                                normalized_record[timestamp_column] = parsed_ts.strftime(output_format)
-                                break
-                            except ValueError:
-                                continue
-                        else:
-                            parse_errors += 1
-                    except Exception as e:
+                if isinstance(ts_value, str) and ts_value.strip():
+                    parsed = False
+                    for fmt in formats_to_try:
+                        try:
+                            parsed_ts = datetime.strptime(ts_value.strip(), fmt)
+                            normalized_record[timestamp_column] = parsed_ts.strftime(output_format)
+                            parsed = True
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if not parsed:
                         logger.warning(f"Failed to parse timestamp: {ts_value}")
                         parse_errors += 1
+                        
                 elif isinstance(ts_value, datetime):
                     normalized_record[timestamp_column] = ts_value.strftime(output_format)
 
@@ -168,7 +309,8 @@ class DataNormalizer:
         self.normalization_log.append({
             "operation": "normalize_timestamps",
             "target_format": output_format,
-            "parse_errors": parse_errors
+            "parse_errors": parse_errors,
+            "total_records": len(data)
         })
 
         return normalized
@@ -197,6 +339,29 @@ class DataNormalizer:
                     normalized_record[col] = round(record[col], decimals)
 
             normalized.append(normalized_record)
+
+        self.normalization_log.append({
+            "operation": "round_numeric_values",
+            "decimals": decimals,
+            "columns": numeric_columns
+        })
+
+        return normalized
+
+    def get_normalization_report(self) -> Dict[str, Any]:
+        """
+        Get a report of all normalization operations performed.
+        
+        Returns:
+            Dictionary with normalization operation logs
+        """
+        return {
+            "operations": len(self.normalization_log),
+            "operations_detail": self.normalization_log,
+            "total_records_processed": sum(
+                log.get("total_records", 0) for log in self.normalization_log
+            )
+        }
 
         self.normalization_log.append({
             "operation": "round_numeric_values",

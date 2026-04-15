@@ -159,6 +159,25 @@ CREATE INDEX IF NOT EXISTS idx_monthly_summary_month ON monthly_commodity_summar
 CREATE INDEX IF NOT EXISTS idx_monthly_summary_commodity ON monthly_commodity_summary(commodity_key);
 """
 
+# DIMENSION: EXCHANGE RATE (for FX tracking and auditing)
+DIM_EXCHANGE_RATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS dim_exchange_rate (
+    exchange_rate_key INT PRIMARY KEY,
+    date_key INT,
+    base_currency VARCHAR(3) NOT NULL,
+    quote_currency VARCHAR(3) NOT NULL,
+    exchange_rate DECIMAL(10, 6) NOT NULL,
+    source VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(date_key, base_currency, quote_currency),
+    FOREIGN KEY (date_key) REFERENCES dim_date(date_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exchange_rate_currencies ON dim_exchange_rate(base_currency, quote_currency);
+CREATE INDEX IF NOT EXISTS idx_exchange_rate_date ON dim_exchange_rate(date_key);
+"""
+
 # FACT TABLE
 FACT_TABLE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS commodity_prices_fact (
@@ -176,6 +195,10 @@ CREATE TABLE IF NOT EXISTS commodity_prices_fact (
     low_price DECIMAL(10, 2),
     volume DECIMAL(15, 2),
     
+    -- Classification
+    price_type VARCHAR(20),
+    delivery_term VARCHAR(10),
+    
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -192,6 +215,7 @@ CREATE INDEX IF NOT EXISTS idx_fact_date ON commodity_prices_fact(date_key);
 CREATE INDEX IF NOT EXISTS idx_fact_commodity ON commodity_prices_fact(commodity_key);
 CREATE INDEX IF NOT EXISTS idx_fact_market ON commodity_prices_fact(market_key);
 CREATE INDEX IF NOT EXISTS idx_fact_source ON commodity_prices_fact(source_key);
+CREATE INDEX IF NOT EXISTS idx_fact_price_type ON commodity_prices_fact(price_type);
 """
 
 # SCD TYPE 2: Track changes over time
@@ -210,6 +234,7 @@ def get_all_schemas() -> dict:
         "dim_market": DIM_MARKET_SCHEMA,
         "dim_source": DIM_SOURCE_SCHEMA,
         "dim_currency": DIM_CURRENCY_SCHEMA,
+        "dim_exchange_rate": DIM_EXCHANGE_RATE_SCHEMA,
         "daily_summary": DAILY_PRICE_SUMMARY_SCHEMA,
         "weekly_summary": WEEKLY_COMMODITY_SUMMARY_SCHEMA,
         "monthly_summary": MONTHLY_COMMODITY_SUMMARY_SCHEMA,

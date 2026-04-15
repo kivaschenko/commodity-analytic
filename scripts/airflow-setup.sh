@@ -51,11 +51,20 @@ echo "    PostgreSQL OK"
 
 # ── 2. Check Redis ─────────────────────────────────────────────────────────────
 echo "==> Checking Redis..."
-if ! redis-cli -h localhost ping | grep -q PONG; then
-    echo "ERROR: Redis is not running on localhost. Start it first." >&2
+# Parse AIRFLOW__CELERY__BROKER_URL (assumes format: redis://[user:pass@]host:port/db)
+BROKER_URL="${AIRFLOW__CELERY__BROKER_URL}"
+if [[ "$BROKER_URL" =~ redis://([^@]*@)?([^:]+):([0-9]+) ]]; then
+    REDIS_HOST="${BASH_REMATCH[2]}"
+    REDIS_PORT="${BASH_REMATCH[3]}"
+    if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping | grep -q PONG; then
+        echo "ERROR: Redis is not accessible at $REDIS_HOST:$REDIS_PORT. Check your broker URL or server." >&2
+        exit 1
+    fi
+    echo "    Redis OK at $REDIS_HOST:$REDIS_PORT"
+else
+    echo "ERROR: Invalid AIRFLOW__CELERY__BROKER_URL format. Expected redis://host:port/db" >&2
     exit 1
 fi
-echo "    Redis OK"
 
 # ── 3. Create DB user and database (idempotent) ────────────────────────────────
 echo "==> Creating PostgreSQL role and database (if absent)..."

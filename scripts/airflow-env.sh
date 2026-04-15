@@ -42,14 +42,14 @@ export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@localhost
 log "Database connection set to local PostgreSQL with user 'airflow' and database 'airflow'."
 
 # ── Celery broker (local Redis, DB 0) ─────────────────────────────────────────
-export AIRFLOW__CELERY__BROKER_URL=redis://:@localhost:6379/0
+export AIRFLOW__CELERY__BROKER_URL=redis://:@localhost:6379/2
 
 log "Celery broker set to local Redis on database 0."
 
 # ── Execution API (Airflow 3 — points to the local api-server) ────────────────
-export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:8080/execution/
+export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:8888/execution/
 
-log "Execution API server URL set to http://localhost:8080/execution/"
+log "Execution API server URL set to http://localhost:8888/execution/"
 
 # ── Security ───────────────────────────────────────────────────────────────────
 # Generate once with:  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

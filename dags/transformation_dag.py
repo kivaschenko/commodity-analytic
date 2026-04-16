@@ -180,7 +180,11 @@ with DAG(
 
         # Remove records with note != 'ok'
         filtered = [
-            r for r in raw_data if r.get("note") == "ok" and r.get("usd_per_ton", 0) > 0
+            r
+            for r in raw_data
+            if r.get("note") == "ok"
+            and r.get("usd_per_ton", None)
+            is not None  # The shares prices defined as null or missing are not valid for our use case
         ]
         logger.info(
             f"YFinance: {len(raw_data)} → {len(filtered)} after validity filtering"

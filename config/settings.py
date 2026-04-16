@@ -9,14 +9,18 @@ from pathlib import Path
 from enum import Enum
 from dotenv import load_dotenv
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__file__)
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 logger.info(f"Loaded environment variables from {BASE_DIR / '.env'}")
 
+
 class Environment(Enum):
     """Supported environments."""
+
     DEV = "development"
     STAGING = "staging"
     PROD = "production"
@@ -25,7 +29,7 @@ class Environment(Enum):
 class Settings:
     """Application settings based on environment."""
 
-    def __init__(self, env: str = 'development'):
+    def __init__(self, env: str = "development"):
         self.env = Environment(env or os.getenv("ENVIRONMENT", "development").lower())
         self._load_settings()
         logger.info(f"Settings initialized for {self.env.value} environment")
@@ -46,7 +50,7 @@ class Settings:
         """Development environment settings."""
         self.database_url = os.getenv(
             "DB_URL",
-            "postgresql+psycopg2://warehouse_user:teomeo2358@localhost:5432/commodity_warehouse"
+            "postgresql+psycopg2://warehouse_user:teomeo2358@localhost:5432/commodity_warehouse",
         )
         self.data_lake_path = os.getenv("DATA_LAKE_PATH", "./data_lake")
         self.warehouse_type = "postgres"
@@ -60,7 +64,9 @@ class Settings:
     def _load_staging_settings(self) -> None:
         """Staging environment settings."""
         self.database_url = os.getenv("DB_URL_STAGING")
-        self.data_lake_path = os.getenv("DATA_LAKE_PATH_STAGING", "s3://data-lake-staging")
+        self.data_lake_path = os.getenv(
+            "DATA_LAKE_PATH_STAGING", "s3://data-lake-staging"
+        )
         self.warehouse_type = "snowflake"
         self.staging_enabled = True
         self.quality_checks_enabled = True

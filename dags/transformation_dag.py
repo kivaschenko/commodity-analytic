@@ -23,6 +23,9 @@ from pathlib import Path
 
 from airflow.sdk import DAG, task
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -75,7 +78,7 @@ with DAG(
             records = json.loads(response["Body"].read().decode("utf-8"))
         else:
             logger.info(f"Loading {source} from local path: {latest_file}")
-            with open(latest_file, 'r', encoding='utf-8') as f:
+            with open(latest_file, "r", encoding="utf-8") as f:
                 records = json.load(f)
 
         logger.info(f"Loaded {len(records)} records from {source}")
@@ -106,21 +109,23 @@ with DAG(
         """
         Extract FX rates from currency source data.
         Focus on USD/UAH pair for Ukrainian commodity conversions.
-        
+
         Args:
             currency_records: Currency records from staging
-        
+
         Returns:
             Dict mapping "USD_UAH" → rate (e.g., {"USD_UAH": 37.0})
         """
         if not currency_records:
             logger.warning("No currency data found, using default FX rates")
             return {"USD_UAH": DEFAULT_CURRENCY_FX_RATE}  # Default fallback
-        
-        logger.info(f"Extracting FX rates from {len(currency_records)} currency records")
+
+        logger.info(
+            f"Extracting FX rates from {len(currency_records)} currency records"
+        )
 
         fx_rates = {}
-        
+
         for record in currency_records:
             logger.info(f"Currency record: {record}")
             provider = record.get("provider", "").lower()
@@ -129,8 +134,10 @@ with DAG(
             base = record.get("base_currency")
             quote = record.get("quote_currency")
             rate = record.get("rate")
-            logger.info(f"Currency record: {base}/{quote} = {rate} (provider: {provider})")
-            
+            logger.info(
+                f"Currency record: {base}/{quote} = {rate} (provider: {provider})"
+            )
+
             if base and quote and rate is not None:
                 key = f"{base}_{quote}"
                 # Take latest rate (records should be from single extraction)
@@ -143,10 +150,12 @@ with DAG(
 
         if "USD_UAH" not in fx_rates:
             fx_rates["USD_UAH"] = DEFAULT_CURRENCY_FX_RATE
-            logger.warning(f"USD_UAH not found in currency data, falling back to {DEFAULT_CURRENCY_FX_RATE}")
-        
+            logger.warning(
+                f"USD_UAH not found in currency data, falling back to {DEFAULT_CURRENCY_FX_RATE}"
+            )
+
         logger.info(f"FX Rate USD/UAH: {fx_rates['USD_UAH']}")
-        
+
         return fx_rates
 
     @task()
@@ -158,22 +167,28 @@ with DAG(
         - Validate required fields
         """
         from transformation.cleaner import DataCleaner
-        
+
         if not raw_data:
             logger.info("No YFinance data to clean")
             return []
 
-        logger.info(f"Using USD/UAH FX rate for pipeline ordering: {fx_rates.get('USD_UAH')}")
-        
+        logger.info(
+            f"Using USD/UAH FX rate for pipeline ordering: {fx_rates.get('USD_UAH')}"
+        )
+
         cleaner = DataCleaner("grain")
-        
+
         # Remove records with note != 'ok'
-        filtered = [r for r in raw_data if r.get("note") == "ok" and r.get("usd_per_ton", 0) > 0]
-        logger.info(f"YFinance: {len(raw_data)} → {len(filtered)} after validity filtering")
-        
+        filtered = [
+            r for r in raw_data if r.get("note") == "ok" and r.get("usd_per_ton", 0) > 0
+        ]
+        logger.info(
+            f"YFinance: {len(raw_data)} → {len(filtered)} after validity filtering"
+        )
+
         # Deduplicate by ticker + date
         cleaned = cleaner.remove_duplicates(filtered, ["ticker", "extracted_at"])
-        
+
         logger.info(f"YFinance cleaned: {len(cleaned)} records")
         return cleaned
 
@@ -186,15 +201,17 @@ with DAG(
         - Filter invalid records (note != 'ok')
         """
         from transformation.cleaner import DataCleaner
-        
+
         if not raw_data:
             logger.info("No GrainTrade UA data to clean")
             return []
 
-        logger.info(f"Using USD/UAH FX rate for pipeline ordering: {fx_rates.get('USD_UAH')}")
-        
+        logger.info(
+            f"Using USD/UAH FX rate for pipeline ordering: {fx_rates.get('USD_UAH')}"
+        )
+
         cleaner = DataCleaner("grain")
-        
+
         # Convert volume to numeric
         for record in raw_data:
             if "volume_tons" in record and isinstance(record["volume_tons"], str):
@@ -202,17 +219,20 @@ with DAG(
                     record["volume_tons"] = float(record["volume_tons"])
                 except ValueError:
                     record["volume_tons"] = None
-        
+
         # Filter valid records
-        filtered = [r for r in raw_data if r.get("note") == "ok" and r.get("price_value", 0) > 0]
-        logger.info(f"GrainTrade UA: {len(raw_data)} → {len(filtered)} after validity filtering")
-        
+        filtered = [
+            r for r in raw_data if r.get("note") == "ok" and r.get("price_value", 0) > 0
+        ]
+        logger.info(
+            f"GrainTrade UA: {len(raw_data)} → {len(filtered)} after validity filtering"
+        )
+
         # Deduplicate
         cleaned = cleaner.remove_duplicates(
-            filtered, 
-            ["company", "crop", "offer_date", "offer_type"]
+            filtered, ["company", "crop", "offer_date", "offer_type"]
         )
-        
+
         logger.info(f"GrainTrade UA cleaned: {len(cleaned)} records")
         return cleaned
 
@@ -225,15 +245,17 @@ with DAG(
         - Split combined price field if needed (price → price_uah_per_ton + price_usd_per_ton)
         """
         from transformation.cleaner import DataCleaner
-        
+
         if not raw_data:
             logger.info("No Tripoli Land data to clean")
             return []
 
-        logger.info(f"Using USD/UAH FX rate for pipeline ordering: {fx_rates.get('USD_UAH')}")
-        
+        logger.info(
+            f"Using USD/UAH FX rate for pipeline ordering: {fx_rates.get('USD_UAH')}"
+        )
+
         cleaner = DataCleaner("grain")
-        
+
         # Convert prices to float
         for record in raw_data:
             if record["price_uah_per_ton"] is None and "price" in record:
@@ -249,230 +271,155 @@ with DAG(
                         record["price_uah_per_ton"] = float(price_str.replace(",", ""))
                     except ValueError:
                         record["price_uah_per_ton"] = None
-        
+
         # Filter valid records
         filtered = [r for r in raw_data if r.get("price_uah_per_ton", 0) > 0]
-        logger.info(f"Tripoli Land: {len(raw_data)} → {len(filtered)} after validity filtering")
-        
+        logger.info(
+            f"Tripoli Land: {len(raw_data)} → {len(filtered)} after validity filtering"
+        )
+
         # Deduplicate
         cleaned = cleaner.remove_duplicates(
-            filtered,
-            ["company_slug", "culture_ua", "extracted_at"]
+            filtered, ["company_slug", "culture_ua", "extracted_at"]
         )
-        
+
         logger.info(f"Tripoli Land cleaned: {len(cleaned)} records")
         return cleaned
 
     @task()
     def normalize_yfinance(cleaned_data: Any, fx_rates: Any) -> List[Dict]:
         """
-        Normalize YFinance futures data:
-        - Already in USD/ton (usd_per_ton column)
-        - Normalize timestamps
-        - Map commodity names
+        Normalize YFinance futures data using comprehensive normalizer.
         """
         from transformation.normalizer import DataNormalizer
-        
+
         if not cleaned_data:
             return []
-        
-        normalizer = DataNormalizer()
-        
-        # YFinance includes mapping via ticker; enrich commodity info
-        enriched = []
-        for record in cleaned_data:
-            enriched_record = record.copy()
-            enriched_record["commodity_name"] = record.get("name", "Unknown")
-            enriched_record["price_usd_per_ton"] = record.get("usd_per_ton")
-            enriched_record["extraction_date"] = record.get("extracted_at", "").split("T")[0]
-            enriched.append(enriched_record)
-        
-        # Normalize timestamps
-        normalized = normalizer.normalize_timestamps(
-            enriched,
-            timestamp_column="extracted_at",
-            output_format="%Y-%m-%d"
-        )
-        
+
+        normalizer = DataNormalizer(fx_rates)
+        normalized = normalizer.normalize_yfinance_data(cleaned_data)
+
         logger.info(f"YFinance normalized: {len(normalized)} records")
         return normalized
 
     @task()
     def normalize_graintradecomua(cleaned_data: Any, fx_rates: Any) -> List[Dict]:
         """
-        Normalize GrainTrade UA spot market data:
-        - Convert UAH prices to USD using FX rates
-        - Normalize commodity names (Ukrainian → English)
-        - Normalize timestamps (DD.MM.YYYY HH:MM → YYYY-MM-DD)
+        Normalize GrainTrade UA spot market data using comprehensive normalizer.
         """
         from transformation.normalizer import DataNormalizer
-        
+
         if not cleaned_data:
             return []
-        
+
         normalizer = DataNormalizer(fx_rates)
-        
-        # Get USD/UAH rate
-        usd_uah_rate = fx_rates.get("USD_UAH", 37.0)
-        normalizer.set_fx_rate("USD", "UAH", usd_uah_rate)
-        
-        # Convert UAH to USD
-        for record in cleaned_data:
-            if "price_value" in record and record.get("currency") == "грн":
-                # price_value is in UAH, convert to USD
-                record["price_usd_per_ton"] = record["price_value"] / usd_uah_rate
-        
-        # Normalize commodity names
-        normalized = normalizer.normalize_commodity_names(
-            cleaned_data,
-            commodity_column="crop"
-        )
-        
-        # Normalize timestamps (DD.MM.YYYY HH:MM format)
-        normalized = normalizer.normalize_timestamps(
-            normalized,
-            timestamp_column="offer_date",
-            output_format="%Y-%m-%d"
-        )
-        
+        normalized = normalizer.normalize_graintradecomua_data(cleaned_data, fx_rates)
+
         logger.info(f"GrainTrade UA normalized: {len(normalized)} records")
         return normalized
 
     @task()
     def normalize_tripoli_land(cleaned_data: Any, fx_rates: Any) -> List[Dict]:
         """
-        Normalize Tripoli Land elevator prices:
-        - Convert UAH prices to USD using FX rates
-        - Normalize commodity names (Ukrainian → English)
-        - Normalize timestamps
+        Normalize Tripoli Land storage price data using comprehensive normalizer.
         """
         from transformation.normalizer import DataNormalizer
-        
+
         if not cleaned_data:
             return []
-        
+
         normalizer = DataNormalizer(fx_rates)
-        
-        # Get USD/UAH rate
-        usd_uah_rate = fx_rates.get("USD_UAH", 37.0)
-        normalizer.set_fx_rate("USD", "UAH", usd_uah_rate)
-        
-        # Convert UAH to USD
-        for record in cleaned_data:
-            if "price_uah_per_ton" in record:
-                record["price_usd_per_ton"] = record["price_uah_per_ton"] / usd_uah_rate
-        
-        # Normalize commodity names (from culture_ua or category_name)
-        commodity_field = "category_name" if "category_name" in cleaned_data[0] else "culture_ua"
-        normalized = normalizer.normalize_commodity_names(
-            cleaned_data,
-            commodity_column=commodity_field
-        )
-        
-        # Normalize timestamps
-        normalized = normalizer.normalize_timestamps(
-            normalized,
-            timestamp_column="extracted_at",
-            output_format="%Y-%m-%d"
-        )
-        
+        normalized = normalizer.normalize_tripoli_land_data(cleaned_data, fx_rates)
+
         logger.info(f"Tripoli Land normalized: {len(normalized)} records")
         return normalized
 
     @task()
     def enrich_yfinance(normalized_data: Any) -> List[Dict]:
         """
-        Enrich YFinance futures with business context:
-        - Extract date dimensions
-        - Add market info (CBOT)
-        - Set price_type = 'futures_close'
+        Enrich YFinance futures with business context.
+        Data is already normalized, just add market context.
         """
         from transformation.enricher import DataEnricher
-        
+
         if not normalized_data:
             return []
-        
+
         enricher = DataEnricher()
-        
+
+        # Add date dimensions using processed_at or source_timestamp
         enriched = enricher.add_date_dimensions(
-            normalized_data,
-            date_column="extracted_at"
+            normalized_data, date_column="processed_at"
         )
-        
-        # Add market and source info
+
+        # Add market and source info (override any existing)
         for record in enriched:
             record["market_name"] = f"CBOT {record.get('commodity_name', 'Unknown')}"
             record["market_exchange"] = "CBOT"
             record["market_country"] = "US"
-            record["price_type"] = "futures_close"
-            record["currency"] = "USD"
-        
+            record["source_name"] = "Yahoo Finance"
+            record["data_type"] = "futures"
+
         logger.info(f"YFinance enriched: {len(enriched)} records")
         return enriched
 
     @task()
     def enrich_graintradecomua(normalized_data: Any) -> List[Dict]:
         """
-        Enrich GrainTrade UA spot market with business context:
-        - Add date dimensions
-        - Add market info
-        - Set price_type based on offer_type
-        - Add delivery term
+        Enrich GrainTrade UA spot market with business context.
+        Data is already normalized, just add market context.
         """
         from transformation.enricher import DataEnricher
-        
+
         if not normalized_data:
             return []
-        
+
         enricher = DataEnricher()
-        
+
+        # Add date dimensions
         enriched = enricher.add_date_dimensions(
-            normalized_data,
-            date_column="offer_date"
+            normalized_data, date_column="processed_at"
         )
-        
+
         # Add market and source info
         for record in enriched:
             record["market_name"] = "GrainTrade UA"
             record["market_exchange"] = "GrainTrade"
             record["market_country"] = "Ukraine"
-            record["price_type"] = "bid" if record.get("offer_type") == "КУПЛЮ" else "ask"
-            record["delivery_term"] = record.get("delivery_term")
-            record["currency"] = "USD"
-        
+            record["source_name"] = "GrainTrade UA"
+            record["data_type"] = "spot_market"
+
         logger.info(f"GrainTrade UA enriched: {len(enriched)} records")
         return enriched
 
     @task()
     def enrich_tripoli_land(normalized_data: Any) -> List[Dict]:
         """
-        Enrich Tripoli Land elevator prices with business context:
-        - Add date dimensions
-        - Add market info (company + location)
-        - Set price_type = 'bid' (buying prices)
+        Enrich Tripoli Land storage prices with business context.
+        Data is already normalized, just add market context.
         """
         from transformation.enricher import DataEnricher
-        
+
         if not normalized_data:
             return []
-        
+
         enricher = DataEnricher()
-        
+
+        # Add date dimensions
         enriched = enricher.add_date_dimensions(
-            normalized_data,
-            date_column="extracted_at"
+            normalized_data, date_column="processed_at"
         )
-        
+
         # Add market and source info
         for record in enriched:
-            company = record.get("company_name", "Unknown")
-            location = record.get("storage_location", "")
-            record["market_name"] = f"{company} - {location}" if location else company
+            company = record.get("company", "Unknown")
+            facility = record.get("facility", "")
+            record["market_name"] = f"{company} - {facility}" if facility else company
             record["market_exchange"] = "Tripoli Land"
             record["market_country"] = "Ukraine"
-            record["price_type"] = "bid"
-            record["currency"] = "USD"
-        
+            record["source_name"] = "Tripoli Land"
+            record["data_type"] = "storage_rates"
+
         logger.info(f"Tripoli Land enriched: {len(enriched)} records")
         return enriched
 
@@ -481,7 +428,7 @@ with DAG(
         """Save YFinance data to silver layer (Parquet)."""
         if not enriched_data:
             return {"source": "yfinance", "status": "skipped", "record_count": 0}
-        
+
         return _save_to_silver("yfinance", enriched_data)
 
     @task()
@@ -489,7 +436,7 @@ with DAG(
         """Save GrainTrade UA data to silver layer (Parquet)."""
         if not enriched_data:
             return {"source": "graintradecomua", "status": "skipped", "record_count": 0}
-        
+
         return _save_to_silver("graintradecomua", enriched_data)
 
     @task()
@@ -497,47 +444,47 @@ with DAG(
         """Save Tripoli Land data to silver layer (Parquet)."""
         if not enriched_data:
             return {"source": "tripoli_land", "status": "skipped", "record_count": 0}
-        
+
         return _save_to_silver("tripoli_land", enriched_data)
 
     def _save_to_silver(source: str, data: List[Dict]) -> Dict[str, Any]:
         """
         Save enriched data to silver layer.
-        
+
         Args:
             source: Source identifier
             data: Enriched records
-        
+
         Returns:
             Status dict with save location and record count
         """
         import pandas as pd
         from pathlib import Path
-        
+
         if not data:
             return {"source": source, "status": "empty", "record_count": 0}
-        
+
         # Create silver layer path
         silver_path = Path("./minio/data/silver-layer")
         silver_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Convert to DataFrame and save as Parquet
         df = pd.DataFrame(data)
-        
+
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"{source}_{timestamp}.parquet"
         filepath = silver_path / filename
-        
+
         df.to_parquet(filepath, compression="snappy", index=False)
-        
+
         logger.info(f"Saved {len(data)} records from {source} to {filepath}")
-        
+
         return {
             "source": source,
             "status": "saved",
             "record_count": len(data),
             "path": str(filepath),
-            "timestamp": timestamp
+            "timestamp": timestamp,
         }
 
     # Task dependencies and orchestration
@@ -548,22 +495,22 @@ with DAG(
 
     # FX extraction is the first shared prerequisite for the rest of the flow.
     fx_rates = extract_fx_rates(currency_data)
-    
+
     # Parallel cleaning
     yf_clean = clean_yfinance(yfinance_data, fx_rates)
     gt_clean = clean_graintradecomua(graintradecomua_data, fx_rates)
     tl_clean = clean_tripoli_land(tripoli_land_data, fx_rates)
-    
+
     # Parallel normalization (depends on FX rates)
     yf_norm = normalize_yfinance(yf_clean, fx_rates)
     gt_norm = normalize_graintradecomua(gt_clean, fx_rates)
     tl_norm = normalize_tripoli_land(tl_clean, fx_rates)
-    
+
     # Parallel enrichment
     yf_enrich = enrich_yfinance(yf_norm)
     gt_enrich = enrich_graintradecomua(gt_norm)
     tl_enrich = enrich_tripoli_land(tl_norm)
-    
+
     # Parallel save to silver
     save_silver_yfinance(yf_enrich)
     save_silver_graintradecomua(gt_enrich)

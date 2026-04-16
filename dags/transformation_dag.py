@@ -17,7 +17,7 @@ Flow:
 import json
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 from pathlib import Path
 
@@ -475,11 +475,20 @@ with DAG(
         # Convert to DataFrame and save as Parquet
         df = pd.DataFrame(data)
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"{source}_{timestamp}.parquet"
         filepath = silver_path / filename
 
-        df.to_parquet(filepath, compression="snappy", index=False)
+        df.to_parquet(
+            filepath,
+            compression="snappy",
+            index=False,
+            storage_options={
+                "user": "minioadmin",
+                "password": "minioadmin",
+                "client_kwargs": {"endpoint_url": "http://localhost:9000"},
+            },
+        )
 
         logger.info(f"Saved {len(data)} records from {source} to {filepath}")
 

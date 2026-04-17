@@ -21,16 +21,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from airflow.sdk import DAG, task
+from config.settings import settings, Environment
+from staging.staging_handler import StagingHandler
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 DEFAULT_CURRENCY_FX_RATE = 43.0  # Default USD/UAH rate if currency data is missing
 
@@ -55,31 +57,13 @@ with DAG(
 ) as dag:
 
     def _load_source_records(source: str) -> List[Dict]:
-        """Load latest staged records for a single source from MinIO/local storage."""
-        from staging.staging_handler import StagingHandler
+        """Load latest staged records for a single source from bronze storage."""
+        handler = StagingHandler(storage_type="minio", layer="bronze")
+        records = handler.load_latest_records(source)
 
-        handler = StagingHandler(storage_type="minio")
-        status = handler.get_staging_status(source)
-
-        if status["status"] == "no_data":
+        if not records:
             logger.warning(f"No staged data found for {source}")
             return []
-
-        latest_file = status.get("latest_file", "")
-
-        if latest_file.startswith("s3://"):
-            logger.info(f"Loading {source} from MinIO: {latest_file}")
-            bucket_and_key = latest_file.replace("s3://", "", 1)
-            bucket, key = bucket_and_key.split("/", 1)
-            if handler.s3_client is None:
-                logger.error(f"S3 client is not initialized for {source}")
-                return []
-            response = handler.s3_client.get_object(Bucket=bucket, Key=key)
-            records = json.loads(response["Body"].read().decode("utf-8"))
-        else:
-            logger.info(f"Loading {source} from local path: {latest_file}")
-            with open(latest_file, "r", encoding="utf-8") as f:
-                records = json.load(f)
 
         logger.info(f"Loaded {len(records)} records from {source}")
         return records
@@ -452,52 +436,22 @@ with DAG(
         return _save_to_silver("tripoli_land", enriched_data)
 
     def _save_to_silver(source: str, data: List[Dict]) -> Dict[str, Any]:
-        """
-        Save enriched data to silver layer.
-
-        Args:
-            source: Source identifier
-            data: Enriched records
-
-        Returns:
-            Status dict with save location and record count
-        """
-        import pandas as pd
-        from pathlib import Path
-
+        """Save enriched data to silver layer using a storage service."""
         if not data:
             return {"source": source, "status": "empty", "record_count": 0}
 
-        # Create silver layer path
-        silver_path = Path("./minio/data/silver-layer")
-        silver_path.mkdir(parents=True, exist_ok=True)
-
-        # Convert to DataFrame and save as Parquet
-        df = pd.DataFrame(data)
-
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        filename = f"{source}_{timestamp}.parquet"
-        filepath = silver_path / filename
-
-        df.to_parquet(
-            filepath,
-            compression="snappy",
-            index=False,
-            storage_options={
-                "user": "minioadmin",
-                "password": "minioadmin",
-                "client_kwargs": {"endpoint_url": "http://localhost:9000"},
-            },
+        storage_type = "hetzner" if settings.env == Environment.PROD else "minio"
+        handler = StagingHandler(storage_type=storage_type, layer="silver")
+        staged_path = handler.stage_raw_data(
+            data=data, source_name=source, file_format="parquet"
         )
-
-        logger.info(f"Saved {len(data)} records from {source} to {filepath}")
 
         return {
             "source": source,
             "status": "saved",
             "record_count": len(data),
-            "path": str(filepath),
-            "timestamp": timestamp,
+            "path": staged_path,
+            "timestamp": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
         }
 
     # Task dependencies and orchestration

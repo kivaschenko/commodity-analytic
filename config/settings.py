@@ -60,6 +60,13 @@ class Settings:
         self.email_enabled = False
         self.log_level = "DEBUG"
         self.cache_enabled = False
+        # Staging settings for development
+        self.storage_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        self.storage_access_key = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
+        self.storage_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
+        self.storage_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        self.bronze_bucket = os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        self.silver_bucket = os.getenv("MINIO_BUCKET_SILVER", "silver-layer")
 
     def _load_staging_settings(self) -> None:
         """Staging environment settings."""
@@ -74,6 +81,13 @@ class Settings:
         self.email_enabled = True
         self.log_level = "INFO"
         self.cache_enabled = True
+        # Staging settings for staging environment
+        self.storage_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+        self.storage_access_key = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
+        self.storage_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
+        self.storage_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        self.bronze_bucket = os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        self.silver_bucket = os.getenv("MINIO_BUCKET_SILVER", "silver-layer")
 
     def _load_prod_settings(self) -> None:
         """Production environment settings."""
@@ -86,6 +100,13 @@ class Settings:
         self.email_enabled = True
         self.log_level = "WARNING"
         self.cache_enabled = True
+        # Staging settings for production environment, use Hetzner Object Storage
+        self.storage_endpoint = os.getenv("HETZNER_STORAGE_ENDPOINT")
+        self.storage_access_key = os.getenv("HETZNER_STORAGE_ACCESS_KEY")
+        self.storage_secret_key = os.getenv("HETZNER_STORAGE_SECRET_KEY")
+        self.storage_region = os.getenv("HETZNER_STORAGE_REGION", "us-east-1")
+        self.bronze_bucket = os.getenv("HETZNER_STORAGE_BUCKET_BRONZE", "bronze-layer")
+        self.silver_bucket = os.getenv("HETZNER_STORAGE_BUCKET_SILVER", "silver-layer")
 
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all current settings."""

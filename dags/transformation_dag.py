@@ -247,19 +247,20 @@ with DAG(
 
         # Convert prices to float
         for record in raw_data:
-            if record["price_uah_per_ton"] is None and "price" in record:
+            logger.info("Clean record: %s", record)
+            if record["price_uah_per_ton"] is None:
                 price_str = record["price"]
-                if isinstance(price_str, str) and price_str.endswith("$"):
-                    try:
-                        record["price_usd_per_ton"] = float(price_str[-4:].rstrip("$"))
-                        record["price"] = price_str[:-4].strip()
-                    except ValueError:
-                        record["price_usd_per_ton"] = None
-                else:
-                    try:
-                        record["price_uah_per_ton"] = float(price_str.replace(",", ""))
-                    except ValueError:
-                        record["price_uah_per_ton"] = None
+                try:
+                    record["price_usd_per_ton"] = float(price_str[-4:].rstrip("$"))
+                    record["price_uah_per_ton"] = float(price_str[:-4].strip())
+                    logger.info(
+                        "Converted prices successfuly: price_usd_per_ton=%d price_uah_per_ton=%d",
+                        record["price_usd_per_ton"],
+                        record["price_uah_per_ton"],
+                    )
+                except ValueError:
+                    record["price_usd_per_ton"] = 0.0
+                    record["price_uah_per_ton"] = 0.0
 
         # Filter valid records
         filtered = [r for r in raw_data if r.get("price_uah_per_ton", 0) > 0]
@@ -267,13 +268,7 @@ with DAG(
             f"Tripoli Land: {len(raw_data)} → {len(filtered)} after validity filtering"
         )
 
-        # Deduplicate
-        cleaned = cleaner.remove_duplicates(
-            filtered, ["company_slug", "culture_ua", "extracted_at"]
-        )
-
-        logger.info(f"Tripoli Land cleaned: {len(cleaned)} records")
-        return cleaned
+        return filtered
 
     @task()
     def normalize_yfinance(cleaned_data: Any, fx_rates: Any) -> List[Dict]:

@@ -172,7 +172,7 @@ class DataNormalizer:
                         )
 
                 except (ValueError, TypeError) as e:
-                    logger.warning(f"Error normalizing price {original_price}: {e}")
+                    logger.warning(f"Error normalizing price: {e}")
                     errors += 1
                     continue
 

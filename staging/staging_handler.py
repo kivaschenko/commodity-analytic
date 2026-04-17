@@ -11,13 +11,13 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from ..storage_services import (
+from storage_services import (
     BaseStorageService,
     HetznerStorageService,
     MinioStorageService,
 )
-from ..config import settings
-from ..logger import logger
+from config.settings import settings
+from logger import logger
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent

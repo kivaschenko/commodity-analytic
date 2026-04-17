@@ -28,8 +28,8 @@ with DAG(
     tags=["backfill", "manual", "recovery"],
     params=ParamsDict(
         dict(
-            start_date=datetime(2026, 1, 1),
-            end_date=datetime(2026, 3, 31),
+            start_date=datetime(2026, 1, 1).timestamp(),
+            end_date=datetime(2026, 3, 31).timestamp(),
             sources=["yfinance", "graintradecomua", "currency", "tripoli_land"],
         ),
     ),

@@ -22,6 +22,10 @@ from pathlib import Path
 
 from airflow.sdk import DAG, task
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from config.settings import settings, Environment
 from staging.staging_handler import StagingHandler
 
@@ -30,9 +34,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 DEFAULT_CURRENCY_FX_RATE = 43.0  # Default USD/UAH rate if currency data is missing
 

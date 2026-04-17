@@ -2,8 +2,8 @@ from boto3 import client
 from botocore.client import Config
 
 from .base_storage import BaseStorageService
-from ..config import settings
-from ..logger import logger
+from config.settings import settings
+from logger import logger
 
 
 def get_hetzner_s3_client():

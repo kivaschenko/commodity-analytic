@@ -27,17 +27,19 @@ with DAG(
     catchup=False,
     tags=["backfill", "manual", "recovery"],
     params=ParamsDict(
-        start_date="2026-01-01",
-        end_date="2026-03-31",
-        sources=["yfinance", "graintradecomua", "currency", "tripoli_land"],
+        dict(
+            start_date=datetime(2026, 1, 1),
+            end_date=datetime(2026, 3, 31),
+            sources=["yfinance", "graintradecomua", "currency", "tripoli_land"],
+        ),
     ),
 ) as dag:
 
     @task()
     def extract_historical_data(
+        sources="{{ params.sources }}",
         start_date="{{ params.start_date }}",
         end_date="{{ params.end_date }}",
-        sources="{{ params.sources }}",
     ):
         """Extract historical data for date range and sources."""
         # TODO: Implement historical extraction

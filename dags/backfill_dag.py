@@ -8,11 +8,11 @@ Manual trigger for backfilling gaps or recovering from failures.
 from datetime import datetime, timedelta
 from airflow.sdk import DAG, task
 from airflow.models import Variable
+from airflow.sdk.definitions.param import ParamsDict
 
 default_args = {
     "owner": "data-engineering",
     "depends_on_past": False,
-    "start_date": datetime(2025, 1, 1),
     "email": ["airflow@example.com"],
     "email_on_failure": True,
     "retries": 3,
@@ -26,11 +26,11 @@ with DAG(
     schedule=None,  # Manual trigger
     catchup=False,
     tags=["backfill", "manual", "recovery"],
-    params={
-        "start_date": "2025-01-01",
-        "end_date": "2025-01-31",
-        "sources": ["yfinance", "graintradecomua", "currency", "tripoli_land"],
-    },
+    params=ParamsDict(
+        start_date="2026-01-01",
+        end_date="2026-03-31",
+        sources=["yfinance", "graintradecomua", "currency", "tripoli_land"],
+    ),
 ) as dag:
 
     @task()

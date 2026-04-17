@@ -4,6 +4,7 @@ Normalizes prices, units, currencies, timestamps, and commodity names.
 """
 
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path

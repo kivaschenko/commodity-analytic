@@ -30,6 +30,9 @@ class Settings:
     """Application settings based on environment."""
 
     def __init__(self, env: str = "development"):
+        self.log_level = (
+            "INFO"  # Default log level, can be overridden by environment variables
+        )
         self.env = Environment(env or os.getenv("ENVIRONMENT", "development").lower())
         self._load_settings()
         logger.info(f"Settings initialized for {self.env.value} environment")

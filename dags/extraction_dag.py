@@ -1,6 +1,6 @@
 """
 Extraction DAG - Daily extraction of commodity prices from all sources.
-Phase 5: Data Pipeline Orchestration (Extraction)
+Phase 1: Data Pipeline Orchestration (Extraction)
 
 Schedule: Daily at midnight UTC (0 0 * * *)
 """
@@ -129,9 +129,9 @@ with DAG(
     tripoli_land = extract_tripoli_land()
 
     consolidated = consolidate_extractions(
-        yfinance, 
-        graintradecomua, 
-        currency, 
+        yfinance,
+        graintradecomua,
+        currency,
         tripoli_land,
     )
     staged = stage_raw_data(consolidated)

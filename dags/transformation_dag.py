@@ -14,16 +14,11 @@ Flow:
   6. [Parallel] Save each source to silver layer as Parquet
 """
 
-import json
 import logging
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from airflow.sdk import DAG, task
 from config.settings import settings, Environment
@@ -33,6 +28,10 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 DEFAULT_CURRENCY_FX_RATE = 43.0  # Default USD/UAH rate if currency data is missing
 

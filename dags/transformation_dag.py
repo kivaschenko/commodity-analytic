@@ -22,8 +22,8 @@ from pathlib import Path
 
 from airflow.sdk import DAG, task
 
-from ..config.settings import settings, Environment
-from ..staging.staging_handler import StagingHandler
+from config.settings import settings, Environment
+from staging.staging_handler import StagingHandler
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

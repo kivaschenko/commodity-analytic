@@ -26,8 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import settings, Environment
-from staging.staging_handler import StagingHandler
+from config.settings import settings, Environment  # noqa: E402
+from staging.staging_handler import StagingHandler  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -39,8 +39,7 @@ DEFAULT_CURRENCY_FX_RATE = 43.0  # Default USD/UAH rate if currency data is miss
 
 default_args = {
     "owner": "data-engineering",
-    "depends_on_past": True,
-    "start_date": datetime(2025, 1, 1),
+    "depends_on_past": False,
     "email": ["airflow@example.com"],
     "email_on_failure": True,
     "retries": 2,
@@ -54,6 +53,7 @@ with DAG(
     description="Transform and clean staged commodity price data",
     schedule=None,  # Triggered by extraction_dag completion
     catchup=False,
+    start_date=datetime(2025, 1, 1),
     tags=["transformation", "commodity", "daily"],
 ) as dag:
 

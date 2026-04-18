@@ -13,7 +13,7 @@ default_args = {
     "owner": "data-engineering",
     "depends_on_past": True,
     "start_date": datetime(2025, 1, 1),
-    "email": ["airflow@example.com"],
+    "email": ["civaschenko@yahoo.com"],
     "email_on_failure": True,
     "retries": 2,
     "retry_delay": timedelta(minutes=5),

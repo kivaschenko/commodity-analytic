@@ -6,12 +6,13 @@ Schedule: Daily after extraction completes
 Depends on: extraction_dag
 
 Flow:
-  1. Load staged data per source (currency, yfinance, graintradecomua, tripoli_land)
-  2. Extract FX rates from currency data (shared dependency)
-  3. [Parallel] Clean each commodity source (remove duplicates, nulls, validate)
-  4. [Parallel] Normalize each commodity source (prices, units, commodity names, timestamps)
-  5. [Parallel] Enrich each source (add dimensions, market info, price types)
-  6. [Parallel] Save each source to silver layer as Parquet
+  1. Run quality checks on extracted staging data
+  2. Load staged data per source (currency, yfinance, graintradecomua, tripoli_land)
+  3. Extract FX rates from currency data (shared dependency)
+  4. [Parallel] Clean each commodity source (remove duplicates, nulls, validate)
+  5. [Parallel] Normalize each commodity source (prices, units, commodity names, timestamps)
+  6. [Parallel] Enrich each source (add dimensions, market info, price types)
+  7. [Parallel] Save each source to silver layer as Parquet
 """
 
 import logging
@@ -40,7 +41,7 @@ DEFAULT_CURRENCY_FX_RATE = 43.0  # Default USD/UAH rate if currency data is miss
 default_args = {
     "owner": "data-engineering",
     "depends_on_past": False,
-    "email": ["airflow@example.com"],
+    "email": ["civaschenko@yahoo.com"],
     "email_on_failure": True,
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
@@ -51,7 +52,7 @@ with DAG(
     dag_id="transformation_dag",
     default_args=default_args,
     description="Transform and clean staged commodity price data",
-    schedule=None,  # Triggered by extraction_dag completion
+    schedule=None,  # Triggered by quality_checks_dag completion
     catchup=False,
     start_date=datetime(2025, 1, 1),
     tags=["transformation", "commodity", "daily"],

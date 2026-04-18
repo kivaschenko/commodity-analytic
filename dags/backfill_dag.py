@@ -12,7 +12,7 @@ from airflow.sdk.definitions.param import ParamsDict
 default_args = {
     "owner": "data-engineering",
     "depends_on_past": False,
-    "email": ["airflow@example.com"],
+    "email": ["civaschenko@yahoo.com"],
     "email_on_failure": True,
     "retries": 3,
     "retry_delay": timedelta(minutes=10),

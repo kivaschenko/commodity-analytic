@@ -49,6 +49,8 @@ class Settings:
             logger.info("Loading production environment settings")
             self._load_prod_settings()
 
+        self._load_email_settings()
+
     def _load_dev_settings(self) -> None:
         """Development environment settings."""
         self.database_url = os.getenv(
@@ -111,6 +113,20 @@ class Settings:
         self.bronze_bucket = os.getenv("HETZNER_STORAGE_BUCKET_BRONZE", "bronze-layer")
         self.silver_bucket = os.getenv("HETZNER_STORAGE_BUCKET_SILVER", "silver-layer")
 
+    def _load_email_settings(self) -> None:
+        """Load email delivery settings from environment variables."""
+        self.smtp_server = os.getenv("SMTP_SERVER")
+        self.smtp_port = int(os.getenv("SMTP_PORT", 587))
+        self.smtp_user = os.getenv("SMTP_USER")
+        self.smtp_password = os.getenv("SMTP_PASSWORD")
+        self.smtp_use_tls = os.getenv("SMTP_USE_TLS", "True").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        self.alert_email = os.getenv("ALERT_EMAIL")
+        self.alert_recipients = [self.alert_email] if self.alert_email else []
+
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all current settings."""
         return {
@@ -121,6 +137,11 @@ class Settings:
             "staging_enabled": self.staging_enabled,
             "quality_checks_enabled": self.quality_checks_enabled,
             "log_level": self.log_level,
+            "smtp_server": self.smtp_server,
+            "smtp_port": self.smtp_port,
+            "smtp_user": self.smtp_user,
+            "smtp_use_tls": self.smtp_use_tls,
+            "alert_email": self.alert_email,
         }
 
 

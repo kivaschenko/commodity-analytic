@@ -137,6 +137,35 @@ class StagingHandler:
         logger.info("Staged %s records to %s", len(data), local_path)
         return str(local_path)
 
+    def add_staging_metadata(self, data: List[Dict], 
+                            source_name: str,
+                            extraction_time: datetime = None) -> List[Dict]:
+        """
+        Add metadata to raw data records.
+        
+        Args:
+            data: Raw records
+            source_name: Data source identifier
+            extraction_time: When data was extracted
+        
+        Returns:
+            Data with added metadata columns
+        """
+        if extraction_time is None:
+            extraction_time = datetime.now(timezone.utc)
+
+        enriched_data = []
+        for record in data:
+            enriched = {
+                "_staging_timestamp": extraction_time.isoformat(),
+                "_source": source_name,
+                "_staging_id": f"{source_name}_{extraction_time.timestamp()}",
+                **record
+            }
+            enriched_data.append(enriched)
+
+        return enriched_data
+
     def get_staging_status(self, source_name: str) -> Dict[str, Any]:
         """Return the current staging status for the requested source."""
         suffix = ".json" if self.layer == "bronze" else ".parquet"

@@ -137,17 +137,17 @@ class StagingHandler:
         logger.info("Staged %s records to %s", len(data), local_path)
         return str(local_path)
 
-    def add_staging_metadata(self, data: List[Dict], 
-                            source_name: str,
-                            extraction_time: datetime = None) -> List[Dict]:
+    def add_staging_metadata(
+        self, data: List[Dict], source_name: str, extraction_time: datetime = None
+    ) -> List[Dict]:
         """
         Add metadata to raw data records.
-        
+
         Args:
             data: Raw records
             source_name: Data source identifier
             extraction_time: When data was extracted
-        
+
         Returns:
             Data with added metadata columns
         """
@@ -160,7 +160,7 @@ class StagingHandler:
                 "_staging_timestamp": extraction_time.isoformat(),
                 "_source": source_name,
                 "_staging_id": f"{source_name}_{extraction_time.timestamp()}",
-                **record
+                **record,
             }
             enriched_data.append(enriched)
 

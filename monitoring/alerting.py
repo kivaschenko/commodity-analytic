@@ -158,7 +158,7 @@ class AlertManager:
         if not self.smtp_server:
             raise ValueError("SMTP server is not configured for email alerts")
 
-        sender = self.smtp_user or "alerts@example.com"
+        sender = "support@graintrade.info"
         email_body = f"{title}\n\n{message}\n\n{metadata or {}}"
         msg = MIMEText(email_body)
         msg["Subject"] = f"[{level.value.upper()}] {title}"
@@ -194,7 +194,7 @@ class AlertManager:
         Returns:
             True if duplicate within dedup window
         """
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
 
         for alert in reversed(self.alert_history[-100:]):
             if alert["title"] == alert_title:
@@ -262,5 +262,5 @@ class AlertManager:
             "total_alerts": len(self.alert_history),
             "alerts_by_level": alerts_by_level,
             "recent_alerts": self.alert_history[-10:],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }

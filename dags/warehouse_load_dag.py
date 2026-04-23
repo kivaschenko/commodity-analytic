@@ -97,29 +97,45 @@ def _normalize_silver_df(df, source_name: str):
 
     fallback_source_name = source_name.replace("_", " ").title().replace("Comua", "ComUA")
 
+    columns = set(df.columns)
+
+    def existing_or_null(column_name: str):
+        return F.col(column_name) if column_name in columns else F.lit(None)
+
+    def coalesce_existing(*column_names: str, fallback):
+        expressions = [F.col(name) for name in column_names if name in columns]
+        expressions.append(fallback)
+        return F.coalesce(*expressions)
+
     ts_col = F.coalesce(
-        F.to_timestamp(F.col("source_timestamp")),
-        F.to_timestamp(F.col("processed_at")),
-        F.to_timestamp(F.col("extracted_at")),
+        F.to_timestamp(existing_or_null("source_timestamp")),
+        F.to_timestamp(existing_or_null("processed_at")),
+        F.to_timestamp(existing_or_null("extracted_at")),
     )
 
     return (
-        df.withColumn("source", F.coalesce(F.col("source"), F.lit(source_name)))
-        .withColumn("source_name", F.coalesce(F.col("source_name"), F.lit(fallback_source_name)))
+        df.withColumn("source", coalesce_existing("source", fallback=F.lit(source_name)))
+        .withColumn("source_name", coalesce_existing("source_name", fallback=F.lit(fallback_source_name)))
         .withColumn(
             "commodity_name",
-            F.when(F.length(F.trim(F.col("commodity_name"))) > 0, F.trim(F.col("commodity_name"))).otherwise(F.lit("Unknown")),
+            F.when(
+                F.length(F.trim(existing_or_null("commodity_name"))) > 0,
+                F.trim(existing_or_null("commodity_name")),
+            ).otherwise(F.lit("Unknown")),
         )
         .withColumn(
             "market_name",
-            F.coalesce(F.col("market_name"), F.col("market"), F.col("region"), F.lit("Unknown Market")),
+            coalesce_existing("market_name", "market", "region", fallback=F.lit("Unknown Market")),
         )
-        .withColumn("market_exchange", F.coalesce(F.col("market_exchange"), F.lit("N/A")))
-        .withColumn("market_country", F.coalesce(F.col("market_country"), F.lit("Unknown")))
-        .withColumn("currency_code", F.upper(F.coalesce(F.col("currency"), F.lit("USD"))))
-        .withColumn("price_usd", F.col("price_usd").cast("double"))
-        .withColumn("volume", F.col("volume").cast("double"))
-        .withColumn("data_type", F.coalesce(F.col("data_type"), F.lit("unknown")))
+        .withColumn("market_exchange", coalesce_existing("market_exchange", fallback=F.lit("N/A")))
+        .withColumn("market_country", coalesce_existing("market_country", fallback=F.lit("Unknown")))
+        .withColumn("currency_code", F.upper(coalesce_existing("currency", fallback=F.lit("USD"))))
+        .withColumn("price_usd", existing_or_null("price_usd").cast("double"))
+        .withColumn("volume", existing_or_null("volume").cast("double"))
+        .withColumn("data_type", coalesce_existing("data_type", fallback=F.lit("unknown")))
+        .withColumn("price_type", coalesce_existing("price_type", fallback=F.lit("unknown")))
+        .withColumn("delivery_term", existing_or_null("delivery_term"))
+        .withColumn("grade", existing_or_null("grade"))
         .withColumn("event_ts", ts_col)
         .withColumn("calendar_date", F.to_date(F.col("event_ts")))
         .filter(F.col("price_usd").isNotNull() & (F.col("price_usd") > F.lit(0.0)) & F.col("calendar_date").isNotNull())

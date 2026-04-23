@@ -48,10 +48,10 @@ Raw Data → Cleaning → Normalization → Enrichment → Silver Layer (Parquet
 ### ✅ Warehouse Loading Orchestration: Implemented
 
 **Implemented in `warehouse_load_dag.py`:**
-1. Load latest silver Parquet records from object storage (MinIO/Hetzner)
-2. Build and upsert `dim_date`, `dim_commodity`, `dim_market`, `dim_source`, `dim_currency`
-3. Resolve dimension keys and load `commodity_prices_fact`
-4. Refresh aggregate tables and run post-load consistency checks
+1. Stage latest silver records per source (`yfinance`, `graintradecomua`, `tripoli_land`) into local temporary Parquet snapshots
+2. Pass only lightweight metadata through Airflow XCom (status, counts, local parquet paths)
+3. Run Spark session to read per-source Parquet files, normalize schema, and load dimensions via JDBC
+4. Build fact rows by joining resolved dimensions and load `commodity_prices_fact` with idempotent anti-join keys
 
 ### 📋 Remaining Tasks
 

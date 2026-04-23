@@ -1,5 +1,5 @@
 """
-Warehouse Load DAG - Load transformed silver data into warehouse dimensions and fact table.
+Warehouse Load DAG - Spark-based loading from silver parquet files to warehouse tables.
 Phase 5: Data Pipeline Orchestration (Warehouse Loading)
 
 Schedule: Triggered after transformation completes
@@ -8,10 +8,13 @@ Depends on: transformation_dag
 
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
+from urllib.parse import unquote, urlparse
 
+import pandas as pd
 from airflow.sdk import DAG, task
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -20,313 +23,375 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from config.settings import Environment, settings  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
-from warehouse.loader import WarehouseLoader  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 SOURCES = ["yfinance", "graintradecomua", "tripoli_land"]
-SOURCE_METADATA = {
-    "yfinance": {
-        "source_name": "Yahoo Finance",
-        "parser_type": "yfinance_parser",
-        "data_type": "futures",
-        "reliability_rating": 4,
-        "update_frequency": "daily",
-        "api_endpoint": "https://finance.yahoo.com",
-    },
-    "graintradecomua": {
-        "source_name": "GrainTrade UA",
-        "parser_type": "graintradecomua_parser",
-        "data_type": "spot_market",
-        "reliability_rating": 3,
-        "update_frequency": "intraday",
-        "api_endpoint": "https://graintrade.com.ua",
-    },
-    "tripoli_land": {
-        "source_name": "Tripoli Land",
-        "parser_type": "tripoli_land_parser",
-        "data_type": "storage_rates",
-        "reliability_rating": 3,
-        "update_frequency": "daily",
-        "api_endpoint": "https://tripoli.land",
-    },
-}
-
-CURRENCY_METADATA = {
-    "USD": ("US Dollar", "United States"),
-    "UAH": ("Ukrainian Hryvnia", "Ukraine"),
-    "EUR": ("Euro", "European Union"),
-}
 
 
 def _storage_type() -> str:
     return "hetzner" if settings.env == Environment.PROD else "minio"
 
 
-def _parse_timestamp(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
+def _parse_database_url(db_url: str) -> Dict[str, Any]:
+    """Parse SQLAlchemy/Postgres URL and return Spark JDBC connection details."""
+    parsed = urlparse(db_url)
+    if not parsed.scheme.startswith("postgresql"):
+        raise ValueError(f"Unsupported warehouse driver in DB URL: {parsed.scheme}")
 
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
+    database = parsed.path.lstrip("/")
+    user = unquote(parsed.username or "")
+    password = unquote(parsed.password or "")
 
-    if isinstance(value, str):
-        for fmt in (
-            "%Y-%m-%dT%H:%M:%S.%f%z",
-            "%Y-%m-%dT%H:%M:%S%z",
-            "%Y-%m-%dT%H:%M:%S.%f",
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-            "%d.%m.%Y %H:%M",
-            "%Y-%m-%d",
-        ):
-            try:
-                parsed = datetime.strptime(value, fmt)
-                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
-
-    return None
-
-
-def _safe_float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _normalize_text(value: Any, fallback: str) -> str:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return fallback
-
-
-def _canonical_source(source: str, record: Dict[str, Any]) -> str:
-    source_name = record.get("source_name")
-    if isinstance(source_name, str) and source_name.strip():
-        return source_name.strip()
-    return SOURCE_METADATA.get(source, {}).get("source_name", source)
-
-
-def _extract_dim_date(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    rows: List[Dict[str, Any]] = []
-    key_map: Dict[str, int] = {}
-
-    for record in records:
-        ts = (
-            _parse_timestamp(record.get("source_timestamp"))
-            or _parse_timestamp(record.get("processed_at"))
-            or _parse_timestamp(record.get("extracted_at"))
-            or datetime.now(timezone.utc)
-        )
-        date_obj = ts.date()
-        date_str = date_obj.isoformat()
-        if date_str in key_map:
-            continue
-
-        date_key = int(date_obj.strftime("%Y%m%d"))
-        key_map[date_str] = date_key
-        rows.append(
-            {
-                "date_key": date_key,
-                "calendar_date": date_str,
-                "year": date_obj.year,
-                "quarter": (date_obj.month - 1) // 3 + 1,
-                "month": date_obj.month,
-                "day": date_obj.day,
-                "week_of_year": date_obj.isocalendar()[1],
-                "day_of_week": date_obj.strftime("%A"),
-                "is_weekend": date_obj.weekday() >= 5,
-                "is_holiday": False,
-                "trading_status": "active",
-            }
-        )
-
-    return rows, key_map
-
-
-def _extract_dim_commodity(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    rows: List[Dict[str, Any]] = []
-    key_map: Dict[str, int] = {}
-    commodity_type_map = {
-        "wheat": ("grain", "cereals"),
-        "corn": ("grain", "cereals"),
-        "barley": ("grain", "cereals"),
-        "rye": ("grain", "cereals"),
-        "oats": ("grain", "cereals"),
-        "soybeans": ("oil_crop", "legumes"),
-        "sunflower": ("oil_crop", "oil_seeds"),
+    return {
+        "jdbc_url": f"jdbc:postgresql://{host}:{port}/{database}",
+        "user": user,
+        "password": password,
+        "driver": "org.postgresql.Driver",
     }
 
-    for record in records:
-        commodity_name = _normalize_text(record.get("commodity_name"), "Unknown")
-        map_key = commodity_name.lower()
-        if map_key in key_map:
-            continue
 
-        ctype, category = commodity_type_map.get(map_key, ("unknown", "unknown"))
-        commodity_key = len(key_map) + 1
-        key_map[map_key] = commodity_key
-        rows.append(
-            {
-                "commodity_key": commodity_key,
-                "commodity_name": commodity_name,
-                "commodity_type": ctype,
-                "category": category,
-                "unit": _normalize_text(record.get("unit"), "metric_ton"),
-                "grade": record.get("grade"),
-                "origin_country": record.get("market_country"),
-                "is_active": True,
-            }
+def _read_table_or_empty(spark, jdbc: Dict[str, str], table_name: str):
+    try:
+        return (
+            spark.read.format("jdbc")
+            .option("url", jdbc["jdbc_url"])
+            .option("dbtable", table_name)
+            .option("user", jdbc["user"])
+            .option("password", jdbc["password"])
+            .option("driver", jdbc["driver"])
+            .load()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Unable to read table %s from JDBC: %s", table_name, exc)
+        return None
+
+
+def _write_jdbc_append(df, jdbc: Dict[str, str], table_name: str) -> None:
+    (
+        df.write.format("jdbc")
+        .mode("append")
+        .option("url", jdbc["jdbc_url"])
+        .option("dbtable", table_name)
+        .option("user", jdbc["user"])
+        .option("password", jdbc["password"])
+        .option("driver", jdbc["driver"])
+        .save()
+    )
+
+
+def _next_key(existing_df, key_col: str) -> int:
+    if existing_df is None:
+        return 1
+
+    from pyspark.sql import functions as F
+
+    max_value = existing_df.agg(F.max(F.col(key_col)).alias("max_key")).collect()[0]["max_key"]
+    return int(max_value) + 1 if max_value is not None else 1
+
+
+def _normalize_silver_df(df, source_name: str):
+    from pyspark.sql import functions as F
+
+    fallback_source_name = source_name.replace("_", " ").title().replace("Comua", "ComUA")
+
+    ts_col = F.coalesce(
+        F.to_timestamp(F.col("source_timestamp")),
+        F.to_timestamp(F.col("processed_at")),
+        F.to_timestamp(F.col("extracted_at")),
+    )
+
+    return (
+        df.withColumn("source", F.coalesce(F.col("source"), F.lit(source_name)))
+        .withColumn("source_name", F.coalesce(F.col("source_name"), F.lit(fallback_source_name)))
+        .withColumn(
+            "commodity_name",
+            F.when(F.length(F.trim(F.col("commodity_name"))) > 0, F.trim(F.col("commodity_name"))).otherwise(F.lit("Unknown")),
+        )
+        .withColumn(
+            "market_name",
+            F.coalesce(F.col("market_name"), F.col("market"), F.col("region"), F.lit("Unknown Market")),
+        )
+        .withColumn("market_exchange", F.coalesce(F.col("market_exchange"), F.lit("N/A")))
+        .withColumn("market_country", F.coalesce(F.col("market_country"), F.lit("Unknown")))
+        .withColumn("currency_code", F.upper(F.coalesce(F.col("currency"), F.lit("USD"))))
+        .withColumn("price_usd", F.col("price_usd").cast("double"))
+        .withColumn("volume", F.col("volume").cast("double"))
+        .withColumn("data_type", F.coalesce(F.col("data_type"), F.lit("unknown")))
+        .withColumn("event_ts", ts_col)
+        .withColumn("calendar_date", F.to_date(F.col("event_ts")))
+        .filter(F.col("price_usd").isNotNull() & (F.col("price_usd") > F.lit(0.0)) & F.col("calendar_date").isNotNull())
+        .select(
+            "source",
+            "source_name",
+            "data_type",
+            "commodity_name",
+            "grade",
+            "market_name",
+            "market_exchange",
+            "market_country",
+            "currency_code",
+            "price_usd",
+            "volume",
+            "price_type",
+            "delivery_term",
+            "calendar_date",
+        )
+    )
+
+
+def _build_dim_date(silver_df):
+    from pyspark.sql import functions as F
+
+    return (
+        silver_df.select("calendar_date")
+        .dropDuplicates(["calendar_date"])
+        .withColumn("date_key", F.date_format(F.col("calendar_date"), "yyyyMMdd").cast("int"))
+        .withColumn("year", F.year(F.col("calendar_date")).cast("int"))
+        .withColumn("quarter", F.quarter(F.col("calendar_date")).cast("int"))
+        .withColumn("month", F.month(F.col("calendar_date")).cast("int"))
+        .withColumn("day", F.dayofmonth(F.col("calendar_date")).cast("int"))
+        .withColumn("week_of_year", F.weekofyear(F.col("calendar_date")).cast("int"))
+        .withColumn("day_of_week", F.date_format(F.col("calendar_date"), "EEEE"))
+        .withColumn("is_weekend", F.dayofweek(F.col("calendar_date")).isin(1, 7))
+        .withColumn("is_holiday", F.lit(False))
+        .withColumn("trading_status", F.lit("active"))
+        .select(
+            "date_key",
+            "calendar_date",
+            "year",
+            "quarter",
+            "month",
+            "day",
+            "week_of_year",
+            "day_of_week",
+            "is_weekend",
+            "is_holiday",
+            "trading_status",
+        )
+    )
+
+
+def _build_dim_commodity(silver_df):
+    from pyspark.sql import functions as F
+
+    return (
+        silver_df.select("commodity_name", "grade")
+        .dropDuplicates(["commodity_name"])
+        .withColumn(
+            "commodity_type",
+            F.when(F.lower(F.col("commodity_name")).isin("wheat", "corn", "barley", "rye", "oats"), F.lit("grain"))
+            .when(F.lower(F.col("commodity_name")).isin("soybeans", "sunflower", "rapeseed"), F.lit("oil_crop"))
+            .otherwise(F.lit("unknown")),
+        )
+        .withColumn(
+            "category",
+            F.when(F.lower(F.col("commodity_name")).isin("wheat", "corn", "barley", "rye", "oats"), F.lit("cereals"))
+            .when(F.lower(F.col("commodity_name")).isin("soybeans"), F.lit("legumes"))
+            .when(F.lower(F.col("commodity_name")).isin("sunflower", "rapeseed"), F.lit("oil_seeds"))
+            .otherwise(F.lit("unknown")),
+        )
+        .withColumn("unit", F.lit("metric_ton"))
+        .withColumn("origin_country", F.lit(None).cast("string"))
+        .withColumn("is_active", F.lit(True))
+        .select(
+            "commodity_name",
+            "commodity_type",
+            "category",
+            "unit",
+            "grade",
+            "origin_country",
+            "is_active",
+        )
+    )
+
+
+def _build_dim_market(silver_df):
+    from pyspark.sql import functions as F
+
+    return (
+        silver_df.select("market_name", "market_exchange", "market_country")
+        .dropDuplicates(["market_name"])
+        .withColumnRenamed("market_exchange", "exchange")
+        .withColumnRenamed("market_country", "country")
+        .withColumn("timezone", F.when(F.col("country") == F.lit("Ukraine"), F.lit("Europe/Kyiv")).otherwise(F.lit("UTC")))
+        .withColumn("trading_hours", F.lit("N/A"))
+        .withColumn("is_active", F.lit(True))
+        .select("market_name", "exchange", "country", "timezone", "trading_hours", "is_active")
+    )
+
+
+def _build_dim_source(silver_df):
+    from pyspark.sql import functions as F
+
+    return (
+        silver_df.select("source", "source_name", "data_type")
+        .dropDuplicates(["source_name"])
+        .withColumn("parser_type", F.concat(F.col("source"), F.lit("_parser")))
+        .withColumn("reliability_rating", F.lit(3))
+        .withColumn("update_frequency", F.lit("daily"))
+        .withColumn("api_endpoint", F.lit(None).cast("string"))
+        .withColumn("is_active", F.lit(True))
+        .select(
+            "source_name",
+            "parser_type",
+            "data_type",
+            "reliability_rating",
+            "update_frequency",
+            "api_endpoint",
+            "is_active",
+        )
+    )
+
+
+def _build_dim_currency(silver_df):
+    from pyspark.sql import functions as F
+
+    return (
+        silver_df.select(F.col("currency_code").alias("currency_code"))
+        .dropDuplicates(["currency_code"])
+        .withColumn(
+            "currency_name",
+            F.when(F.col("currency_code") == F.lit("USD"), F.lit("US Dollar"))
+            .when(F.col("currency_code") == F.lit("UAH"), F.lit("Ukrainian Hryvnia"))
+            .when(F.col("currency_code") == F.lit("EUR"), F.lit("Euro"))
+            .otherwise(F.col("currency_code")),
+        )
+        .withColumn(
+            "country",
+            F.when(F.col("currency_code") == F.lit("USD"), F.lit("United States"))
+            .when(F.col("currency_code") == F.lit("UAH"), F.lit("Ukraine"))
+            .when(F.col("currency_code") == F.lit("EUR"), F.lit("European Union"))
+            .otherwise(F.lit("Unknown")),
+        )
+        .select("currency_code", "currency_name", "country")
+    )
+
+
+def _insert_new_dimension_rows(spark, jdbc: Dict[str, str], dim_df, table_name: str, key_col: str, natural_key_col: str):
+    from pyspark.sql import Window
+    from pyspark.sql import functions as F
+
+    existing_df = _read_table_or_empty(spark, jdbc, table_name)
+    if existing_df is not None:
+        dim_df = dim_df.join(existing_df.select(natural_key_col), natural_key_col, "left_anti")
+
+    rows_to_insert = dim_df.count()
+    if rows_to_insert == 0:
+        return 0
+
+    start_key = _next_key(existing_df, key_col)
+    window = Window.orderBy(F.col(natural_key_col))
+    keyed_df = dim_df.withColumn(key_col, (F.row_number().over(window) + F.lit(start_key - 1)).cast("int"))
+
+    _write_jdbc_append(keyed_df, jdbc, table_name)
+    return int(rows_to_insert)
+
+
+def _build_fact_df(silver_df, dim_date, dim_commodity, dim_market, dim_source, dim_currency):
+    from pyspark.sql import functions as F
+
+    return (
+        silver_df.alias("s")
+        .join(dim_date.alias("dd"), F.col("s.calendar_date") == F.col("dd.calendar_date"), "inner")
+        .join(dim_commodity.alias("dc"), F.col("s.commodity_name") == F.col("dc.commodity_name"), "inner")
+        .join(dim_market.alias("dm"), F.col("s.market_name") == F.col("dm.market_name"), "inner")
+        .join(dim_source.alias("ds"), F.col("s.source_name") == F.col("ds.source_name"), "inner")
+        .join(dim_currency.alias("dcu"), F.col("s.currency_code") == F.col("dcu.currency_code"), "inner")
+        .select(
+            F.col("dd.date_key").cast("int").alias("date_key"),
+            F.col("dc.commodity_key").cast("int").alias("commodity_key"),
+            F.col("dm.market_key").cast("int").alias("market_key"),
+            F.col("ds.source_key").cast("int").alias("source_key"),
+            F.col("dcu.currency_key").cast("int").alias("currency_key"),
+            F.col("s.price_usd").cast("double").alias("open_price"),
+            F.col("s.price_usd").cast("double").alias("close_price"),
+            F.col("s.price_usd").cast("double").alias("high_price"),
+            F.col("s.price_usd").cast("double").alias("low_price"),
+            F.coalesce(F.col("s.volume"), F.lit(0.0)).cast("double").alias("volume"),
+            F.coalesce(F.col("s.price_type"), F.lit("unknown")).alias("price_type"),
+            F.col("s.delivery_term").alias("delivery_term"),
+        )
+        .dropDuplicates(
+            [
+                "date_key",
+                "commodity_key",
+                "market_key",
+                "source_key",
+                "currency_key",
+                "price_type",
+                "delivery_term",
+            ]
+        )
+    )
+
+
+def _load_dim_tables(spark, jdbc: Dict[str, str]):
+    return {
+        "dim_date": _read_table_or_empty(spark, jdbc, "dim_date"),
+        "dim_commodity": _read_table_or_empty(spark, jdbc, "dim_commodity"),
+        "dim_market": _read_table_or_empty(spark, jdbc, "dim_market"),
+        "dim_source": _read_table_or_empty(spark, jdbc, "dim_source"),
+        "dim_currency": _read_table_or_empty(spark, jdbc, "dim_currency"),
+    }
+
+
+def _append_fact_rows(spark, jdbc: Dict[str, str], fact_df):
+    from pyspark.sql import Window
+    from pyspark.sql import functions as F
+
+    existing_fact = _read_table_or_empty(spark, jdbc, "commodity_prices_fact")
+    if existing_fact is not None:
+        fact_df = fact_df.join(
+            existing_fact.select(
+                "date_key",
+                "commodity_key",
+                "market_key",
+                "source_key",
+                "currency_key",
+                "price_type",
+                "delivery_term",
+            ),
+            [
+                "date_key",
+                "commodity_key",
+                "market_key",
+                "source_key",
+                "currency_key",
+                "price_type",
+                "delivery_term",
+            ],
+            "left_anti",
         )
 
-    return rows, key_map
+    fact_rows = int(fact_df.count())
+    if fact_rows == 0:
+        return 0
 
+    start_price_id = _next_key(existing_fact, "price_id")
+    keyed_fact_df = fact_df.withColumn(
+        "price_id",
+        (F.row_number().over(Window.orderBy(F.col("date_key"), F.col("commodity_key"))) + F.lit(start_price_id - 1)).cast("bigint"),
+    ).select(
+        "price_id",
+        "date_key",
+        "commodity_key",
+        "market_key",
+        "source_key",
+        "currency_key",
+        "open_price",
+        "close_price",
+        "high_price",
+        "low_price",
+        "volume",
+        "price_type",
+        "delivery_term",
+    )
 
-def _extract_dim_market(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    rows: List[Dict[str, Any]] = []
-    key_map: Dict[str, int] = {}
-
-    for record in records:
-        market_name = _normalize_text(
-            record.get("market_name") or record.get("market") or record.get("region"),
-            "Unknown Market",
-        )
-        map_key = market_name.lower()
-        if map_key in key_map:
-            continue
-
-        country = _normalize_text(record.get("market_country"), "Unknown")
-        timezone_name = "Europe/Kyiv" if country == "Ukraine" else "UTC"
-        market_key = len(key_map) + 1
-        key_map[map_key] = market_key
-        rows.append(
-            {
-                "market_key": market_key,
-                "market_name": market_name,
-                "exchange": _normalize_text(record.get("market_exchange"), "N/A"),
-                "country": country,
-                "timezone": timezone_name,
-                "trading_hours": "N/A",
-                "is_active": True,
-            }
-        )
-
-    return rows, key_map
-
-
-def _extract_dim_source(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    rows: List[Dict[str, Any]] = []
-    key_map: Dict[str, int] = {}
-
-    for record in records:
-        source = _normalize_text(record.get("source"), "unknown")
-        source_name = _canonical_source(source, record)
-        map_key = source_name.lower()
-        if map_key in key_map:
-            continue
-
-        defaults = SOURCE_METADATA.get(source, {})
-        source_key = len(key_map) + 1
-        key_map[map_key] = source_key
-        rows.append(
-            {
-                "source_key": source_key,
-                "source_name": source_name,
-                "parser_type": defaults.get("parser_type", f"{source}_parser"),
-                "data_type": _normalize_text(record.get("data_type"), defaults.get("data_type", "unknown")),
-                "reliability_rating": defaults.get("reliability_rating", 3),
-                "update_frequency": defaults.get("update_frequency", "daily"),
-                "api_endpoint": defaults.get("api_endpoint"),
-                "is_active": True,
-            }
-        )
-
-    return rows, key_map
-
-
-def _extract_dim_currency(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    rows: List[Dict[str, Any]] = []
-    key_map: Dict[str, int] = {}
-
-    currency_codes = {"USD"}
-    for record in records:
-        code = record.get("currency")
-        if isinstance(code, str) and code.strip():
-            currency_codes.add(code.strip().upper())
-
-    for currency_code in sorted(currency_codes):
-        currency_key = len(key_map) + 1
-        key_map[currency_code] = currency_key
-        currency_name, country = CURRENCY_METADATA.get(currency_code, (currency_code, "Unknown"))
-        rows.append(
-            {
-                "currency_key": currency_key,
-                "currency_code": currency_code,
-                "currency_name": currency_name,
-                "country": country,
-            }
-        )
-
-    return rows, key_map
-
-
-def _build_fact_rows(records: List[Dict[str, Any]], dim_results: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    facts: List[Dict[str, Any]] = []
-
-    date_map = dim_results["dim_date"]["key_map"]
-    commodity_map = dim_results["dim_commodity"]["key_map"]
-    market_map = dim_results["dim_market"]["key_map"]
-    source_map = dim_results["dim_source"]["key_map"]
-    currency_map = dim_results["dim_currency"]["key_map"]
-
-    for record in records:
-        ts = (
-            _parse_timestamp(record.get("source_timestamp"))
-            or _parse_timestamp(record.get("processed_at"))
-            or _parse_timestamp(record.get("extracted_at"))
-        )
-        if ts is None:
-            continue
-
-        date_key = date_map.get(ts.date().isoformat())
-        commodity_key = commodity_map.get(_normalize_text(record.get("commodity_name"), "Unknown").lower())
-        market_name = _normalize_text(
-            record.get("market_name") or record.get("market") or record.get("region"),
-            "Unknown Market",
-        ).lower()
-        market_key = market_map.get(market_name)
-
-        source_key = source_map.get(_canonical_source(_normalize_text(record.get("source"), "unknown"), record).lower())
-        currency_code = _normalize_text(record.get("currency"), "USD").upper()
-        currency_key = currency_map.get(currency_code)
-
-        price_usd = _safe_float(record.get("price_usd"))
-        if not all([date_key, commodity_key, market_key, source_key, currency_key]) or price_usd is None:
-            continue
-
-        volume = _safe_float(record.get("volume"))
-        facts.append(
-            {
-                "date_key": date_key,
-                "commodity_key": commodity_key,
-                "market_key": market_key,
-                "source_key": source_key,
-                "currency_key": currency_key,
-                "open_price": price_usd,
-                "close_price": price_usd,
-                "high_price": price_usd,
-                "low_price": price_usd,
-                "volume": volume if volume is not None else 0.0,
-                "price_type": _normalize_text(record.get("price_type"), "unknown"),
-                "delivery_term": record.get("delivery_term"),
-            }
-        )
-
-    return facts
+    _write_jdbc_append(keyed_fact_df, jdbc, "commodity_prices_fact")
+    return fact_rows
 
 
 default_args = {
@@ -343,117 +408,177 @@ default_args = {
 with DAG(
     dag_id="warehouse_load_dag",
     default_args=default_args,
-    description="Load transformed silver data into warehouse dimensions and fact table",
-    schedule=None,  # Triggered by transformation_dag completion
+    description="Spark loading from silver parquet to warehouse dimensions and fact table",
+    schedule=None,
     catchup=False,
-    tags=["warehouse", "commodity", "daily"],
+    tags=["warehouse", "commodity", "daily", "spark"],
 ) as dag:
 
     @task()
     def load_silver_data() -> Dict[str, Any]:
-        """Load latest silver parquet records for each transformed source."""
+        """
+        Load the latest silver records per source and persist to local temp parquet files.
+        Returns only a lightweight manifest to avoid large XCom payloads.
+        """
         handler = StagingHandler(storage_type=_storage_type(), layer="silver")
+        run_dir = Path(tempfile.gettempdir()) / "warehouse_silver" / datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        run_dir.mkdir(parents=True, exist_ok=True)
 
-        all_records: List[Dict[str, Any]] = []
-        per_source: Dict[str, Dict[str, Any]] = {}
+        sources_manifest: Dict[str, Dict[str, Any]] = {}
+        total_count = 0
 
         for source in SOURCES:
             records = handler.load_latest_records(source)
-            for record in records:
-                record.setdefault("source", source)
-            all_records.extend(records)
-            per_source[source] = {
-                "record_count": len(records),
-                "status": "loaded" if records else "no_data",
+            count = len(records)
+            source_path = run_dir / f"{source}.parquet"
+
+            if count > 0:
+                pd.DataFrame(records).to_parquet(source_path, index=False)
+                status = "staged"
+            else:
+                status = "no_data"
+
+            sources_manifest[source] = {
+                "status": status,
+                "record_count": int(count),
+                "path": str(source_path),
+            }
+            total_count += count
+
+        return {
+            "status": "loaded" if total_count > 0 else "no_data",
+            "record_count": int(total_count),
+            "run_dir": str(run_dir),
+            "sources": sources_manifest,
+        }
+
+    @task()
+    def load_warehouse_with_spark(silver_manifest: Dict[str, Any]) -> Dict[str, Any]:
+        """Run Spark job that loads dimensions and fact table into warehouse PostgreSQL."""
+        if silver_manifest.get("status") != "loaded":
+            return {
+                "status": "skipped",
+                "reason": "no silver data",
+                "dim_inserted": {},
+                "fact_inserted": 0,
             }
 
-        return {
-            "status": "loaded" if all_records else "no_data",
-            "record_count": len(all_records),
-            "sources": per_source,
-            "records": all_records,
-        }
+        from pyspark.sql import SparkSession
 
-    @task()
-    def upsert_dim_date(silver_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Build and upsert date dimension from silver records."""
-        rows, key_map = _extract_dim_date(silver_data.get("records", []))
-        stats = WarehouseLoader().load_dimension_table(rows, "dim_date", ["calendar_date"])
-        return {"table": "dim_date", "rows": len(rows), "key_map": key_map, "stats": stats}
-
-    @task()
-    def upsert_dim_commodity(silver_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Build and upsert commodity dimension from silver records."""
-        rows, key_map = _extract_dim_commodity(silver_data.get("records", []))
-        stats = WarehouseLoader().load_dimension_table(rows, "dim_commodity", ["commodity_name"])
-        return {"table": "dim_commodity", "rows": len(rows), "key_map": key_map, "stats": stats}
-
-    @task()
-    def upsert_dim_market(silver_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Build and upsert market dimension from silver records."""
-        rows, key_map = _extract_dim_market(silver_data.get("records", []))
-        stats = WarehouseLoader().load_dimension_table(rows, "dim_market", ["market_name"])
-        return {"table": "dim_market", "rows": len(rows), "key_map": key_map, "stats": stats}
-
-    @task()
-    def upsert_dim_source(silver_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Build and upsert source dimension from silver records."""
-        rows, key_map = _extract_dim_source(silver_data.get("records", []))
-        stats = WarehouseLoader().load_dimension_table(rows, "dim_source", ["source_name"])
-        return {"table": "dim_source", "rows": len(rows), "key_map": key_map, "stats": stats}
-
-    @task()
-    def upsert_dim_currency(silver_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Build and upsert currency dimension from silver records."""
-        rows, key_map = _extract_dim_currency(silver_data.get("records", []))
-        stats = WarehouseLoader().load_dimension_table(rows, "dim_currency", ["currency_code"])
-        return {"table": "dim_currency", "rows": len(rows), "key_map": key_map, "stats": stats}
-
-    @task()
-    def insert_fact_table(silver_data: Dict[str, Any], dim_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Build and insert fact rows with resolved dimension keys."""
-        dim_by_table = {item["table"]: item for item in dim_results}
-        fact_rows = _build_fact_rows(silver_data.get("records", []), dim_by_table)
-        stats = WarehouseLoader().load_fact_table(
-            fact_rows,
-            table_name="commodity_prices_fact",
-            partition_column="date_key",
+        spark = (
+            SparkSession.builder.appName("warehouse_load_dag")
+            .config("spark.sql.session.timeZone", "UTC")
+            .config("spark.sql.shuffle.partitions", "8")
+            .getOrCreate()
         )
-        return {
-            "table": "commodity_prices_fact",
-            "records_prepared": len(fact_rows),
-            "inserted": stats.get("inserted", 0),
-            "skipped": stats.get("skipped", 0),
-            "errors": stats.get("errors", 0),
-        }
+
+        try:
+            source_dfs = []
+            for source in SOURCES:
+                source_info = silver_manifest.get("sources", {}).get(source, {})
+                if source_info.get("record_count", 0) <= 0:
+                    continue
+
+                source_path = source_info.get("path")
+                if not source_path or not Path(source_path).exists():
+                    continue
+
+                source_df = spark.read.parquet(source_path)
+                source_dfs.append(_normalize_silver_df(source_df, source))
+
+            if not source_dfs:
+                return {
+                    "status": "skipped",
+                    "reason": "no readable parquet snapshots",
+                    "dim_inserted": {},
+                    "fact_inserted": 0,
+                }
+
+            silver_df = source_dfs[0]
+            for df in source_dfs[1:]:
+                silver_df = silver_df.unionByName(df, allowMissingColumns=True)
+
+            silver_df = silver_df.dropDuplicates(
+                ["calendar_date", "commodity_name", "market_name", "source_name", "currency_code", "price_type"]
+            )
+
+            jdbc = _parse_database_url(settings.database_url)
+
+            dim_date_df = _build_dim_date(silver_df)
+            dim_commodity_df = _build_dim_commodity(silver_df)
+            dim_market_df = _build_dim_market(silver_df)
+            dim_source_df = _build_dim_source(silver_df)
+            dim_currency_df = _build_dim_currency(silver_df)
+
+            inserted_counts = {
+                "dim_date": 0,
+                "dim_commodity": 0,
+                "dim_market": 0,
+                "dim_source": 0,
+                "dim_currency": 0,
+            }
+
+            existing_dim_date = _read_table_or_empty(spark, jdbc, "dim_date")
+            if existing_dim_date is not None:
+                to_insert_date = dim_date_df.join(existing_dim_date.select("calendar_date"), "calendar_date", "left_anti")
+            else:
+                to_insert_date = dim_date_df
+
+            inserted_counts["dim_date"] = int(to_insert_date.count())
+            if inserted_counts["dim_date"] > 0:
+                _write_jdbc_append(to_insert_date, jdbc, "dim_date")
+
+            inserted_counts["dim_commodity"] = _insert_new_dimension_rows(
+                spark, jdbc, dim_commodity_df, "dim_commodity", "commodity_key", "commodity_name"
+            )
+            inserted_counts["dim_market"] = _insert_new_dimension_rows(
+                spark, jdbc, dim_market_df, "dim_market", "market_key", "market_name"
+            )
+            inserted_counts["dim_source"] = _insert_new_dimension_rows(
+                spark, jdbc, dim_source_df, "dim_source", "source_key", "source_name"
+            )
+            inserted_counts["dim_currency"] = _insert_new_dimension_rows(
+                spark, jdbc, dim_currency_df, "dim_currency", "currency_key", "currency_code"
+            )
+
+            dims = _load_dim_tables(spark, jdbc)
+            if any(value is None for value in dims.values()):
+                raise RuntimeError("One or more dimension tables are not readable after dimension loading")
+
+            fact_df = _build_fact_df(
+                silver_df,
+                dims["dim_date"],
+                dims["dim_commodity"],
+                dims["dim_market"],
+                dims["dim_source"],
+                dims["dim_currency"],
+            )
+            fact_rows = _append_fact_rows(spark, jdbc, fact_df)
+
+            return {
+                "status": "loaded",
+                "silver_records": int(silver_manifest.get("record_count", 0)),
+                "dim_inserted": inserted_counts,
+                "fact_inserted": int(fact_rows),
+            }
+        finally:
+            spark.stop()
 
     @task()
-    def refresh_aggregates(fact_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Refresh aggregate warehouse tables when fact load succeeds."""
-        if fact_results.get("records_prepared", 0) == 0:
-            return {"status": "skipped", "reason": "no fact rows prepared", "refreshed": [], "errors": []}
+    def verify_warehouse_load(load_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """Basic verification summary for Airflow monitoring."""
+        if load_stats.get("status") == "skipped":
+            return {
+                "status": "skipped",
+                "checks_passed": 1,
+                "checks_total": 1,
+                "checks": {"no_data_run": True},
+            }
 
-        stats = WarehouseLoader().refresh_aggregate_tables()
-        return {
-            "status": "completed" if not stats.get("errors") else "partial",
-            "refreshed": stats.get("refreshed", []),
-            "errors": stats.get("errors", []),
-        }
-
-    @task()
-    def verify_warehouse(
-        silver_data: Dict[str, Any],
-        dim_results: List[Dict[str, Any]],
-        fact_results: Dict[str, Any],
-        agg_results: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Run consistency checks for warehouse loading outputs."""
         checks = {
-            "silver_data_present": silver_data.get("record_count", 0) >= 0,
-            "dimension_rows_built": all(result.get("rows", 0) > 0 for result in dim_results),
-            "fact_records_prepared": fact_results.get("records_prepared", 0) >= fact_results.get("inserted", 0),
-            "fact_load_errors_zero": fact_results.get("errors", 0) == 0,
-            "aggregate_refresh_errors_zero": len(agg_results.get("errors", [])) == 0,
+            "warehouse_load_success": load_stats.get("status") == "loaded",
+            "fact_loaded_or_empty_valid": load_stats.get("fact_inserted", 0) >= 0,
+            "dim_result_present": isinstance(load_stats.get("dim_inserted"), dict),
         }
         passed = sum(1 for value in checks.values() if value)
 
@@ -462,19 +587,9 @@ with DAG(
             "checks_passed": passed,
             "checks_total": len(checks),
             "checks": checks,
-            "silver_records": silver_data.get("record_count", 0),
-            "fact_inserted": fact_results.get("inserted", 0),
+            "load_stats": load_stats,
         }
 
     silver = load_silver_data()
-
-    dim_date = upsert_dim_date(silver)
-    dim_commodity = upsert_dim_commodity(silver)
-    dim_market = upsert_dim_market(silver)
-    dim_source = upsert_dim_source(silver)
-    dim_currency = upsert_dim_currency(silver)
-
-    dims = [dim_date, dim_commodity, dim_market, dim_source, dim_currency]
-    fact = insert_fact_table(silver, dims)
-    agg = refresh_aggregates(fact)
-    verify_warehouse(silver, dims, fact, agg)
+    warehouse_stats = load_warehouse_with_spark(silver)
+    verify_warehouse_load(warehouse_stats)

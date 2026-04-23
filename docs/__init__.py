@@ -48,9 +48,9 @@ Data Sources
 ### Daily Pipeline
 
 1. **extraction_dag** (0:00 UTC) - Extracts data from all sources
-2. **transformation_dag** - Cleans, normalizes, and enriches data
-3. **warehouse_load_dag** - Loads into warehouse fact/dimension tables
-4. **quality_checks_dag** - Validates warehouse data
+2. **quality_checks_dag** - Validates staged extraction data
+3. **transformation_dag** - Cleans, normalizes, and enriches data
+4. **warehouse_load_dag** - Loads silver data into warehouse fact/dimension tables
 5. **backfill_dag** - Manual trigger for historical backfills
 
 ### Data Medallion Architecture

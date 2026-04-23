@@ -45,21 +45,21 @@ Raw Data → Cleaning → Normalization → Enrichment → Silver Layer (Parquet
 - **Enrichment**: Business context and dimensions added
 - **Silver Layer**: Parquet files saved to MINIO
 
-### 🔄 Next Priority: Warehouse Loading
+### ✅ Warehouse Loading Orchestration: Implemented
 
-**Required Implementation:**
-1. **Database Setup**: PostgreSQL with star schema
-2. **Dimension Loading**: SCD Type 2 for slowly changing dimensions
-3. **Fact Table Loading**: Incremental loading with foreign keys
-4. **Data Quality Checks**: Comprehensive validation
+**Implemented in `warehouse_load_dag.py`:**
+1. Load latest silver Parquet records from object storage (MinIO/Hetzner)
+2. Build and upsert `dim_date`, `dim_commodity`, `dim_market`, `dim_source`, `dim_currency`
+3. Resolve dimension keys and load `commodity_prices_fact`
+4. Refresh aggregate tables and run post-load consistency checks
 
 ### 📋 Remaining Tasks
 
 #### Immediate (Week 1)
 1. Set up PostgreSQL database with schema
-2. Implement WarehouseLoader for dimension tables
-3. Create fact table loading logic
-4. Update warehouse_load_dag.py
+2. Implement persistent SQL operations in `warehouse/loader.py`
+3. Add idempotent upsert/merge logic for dimensions and fact data
+4. Add integration tests for warehouse loading path
 
 #### Short-term (Week 2)
 1. Implement data quality checks

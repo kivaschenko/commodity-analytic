@@ -249,6 +249,11 @@ with DAG(
         # Convert prices to float
         for record in raw_data:
             logger.info("Clean record: %s", record)
+
+            # Drop records where key 'note' exists and is not 'ok'
+            if "note" in record and record["note"] != "ok":
+                logger.info("Dropping record due to note: %s", record["note"])
+                continue
             if record["price_uah_per_ton"] is None:
                 price_str = record["price"]
                 try:
@@ -262,6 +267,9 @@ with DAG(
                 except ValueError:
                     record["price_usd_per_ton"] = 0.0
                     record["price_uah_per_ton"] = 0.0
+
+        # Handle missing price_uah_per_ton by parsing combined price field
+        raw_data = cleaner.handle_missing_values(raw_data, strategy="drop", fill_value=None)
 
         # Filter valid records
         filtered = [r for r in raw_data if r.get("price_uah_per_ton", 0) > 0]

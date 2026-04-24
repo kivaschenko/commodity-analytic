@@ -200,6 +200,7 @@ def _build_dim_date(silver_df):
 
     return (
         silver_df.select(F.col("calendar_date"))
+        .where(F.col("calendar_date").isNotNull())
         .distinct()
         .withColumn("year", F.year("calendar_date"))
         .withColumn("month", F.month("calendar_date"))
@@ -207,9 +208,21 @@ def _build_dim_date(silver_df):
         .withColumn("quarter", F.quarter("calendar_date"))
         .withColumn("week_of_year", F.weekofyear("calendar_date"))
         .withColumn("day_of_week", F.dayofweek("calendar_date"))
-        .withColumn("is_weekend", (F.dayofweek("calendar_date").isin(1, 7)).cast("boolean"))
+        .withColumn("is_weekend", F.col("day_of_week").isin(1, 7))
+        # generate YYYYMMDD integer key
+        .withColumn("date_key", F.date_format("calendar_date", "yyyyMMdd").cast("int"))
+        .select(
+            "date_key",
+            "calendar_date",
+            "year",
+            "quarter",
+            "month",
+            "day",
+            "week_of_year",
+            "day_of_week",
+            "is_weekend",
+        )
     )
-# ...existing code...
 
 def _build_dim_commodity(silver_df):
     from pyspark.sql import functions as F

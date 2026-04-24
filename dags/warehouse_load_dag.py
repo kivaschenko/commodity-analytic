@@ -107,10 +107,21 @@ def _normalize_silver_df(df, source_name: str):
         expressions.append(fallback)
         return F.coalesce(*expressions)
 
+    def parse_ts_safe(column_name: str):
+        raw = F.trim(existing_or_null(column_name).cast("string"))
+        return (
+            F.when(raw.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd HH:mm:ss"))
+            .when(raw.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd HH:mm"))
+            .when(raw.rlike(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd'T'HH:mm:ss"))
+            .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$"), F.to_timestamp(raw, "dd.MM.yyyy HH:mm:ss"))
+            .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$"), F.to_timestamp(raw, "dd.MM.yyyy HH:mm"))
+            .otherwise(F.lit(None).cast("timestamp"))
+        )
+
     ts_col = F.coalesce(
-        F.to_timestamp(existing_or_null("source_timestamp")),
-        F.to_timestamp(existing_or_null("processed_at")),
-        F.to_timestamp(existing_or_null("extracted_at")),
+        parse_ts_safe("source_timestamp"),
+        parse_ts_safe("processed_at"),
+        parse_ts_safe("extracted_at"),
     )
 
     return (

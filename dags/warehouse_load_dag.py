@@ -92,37 +92,69 @@ def _next_key(existing_df, key_col: str) -> int:
     return int(max_value) + 1 if max_value is not None else 1
 
 
+def _create_spark_session():
+    """Create or retrieve a Spark session configured for warehouse loading."""
+    from pyspark.sql import SparkSession
+    _parse_database_url(settings.database_url)
+
+    return (
+        SparkSession.builder.appName("warehouse_load_dag")
+        .master("local[*]")
+        # ---------- tolerance for malformed datetime strings ----------
+        .config("spark.sql.ansi.enabled", "false")
+        .config("spark.sql.legacy.timeParserPolicy", "LEGACY")
+        # ---------- JDBC driver ----------------------------------
+        .config(
+            "spark.jars.packages",
+            "org.postgresql:postgresql:42.7.3",
+        )
+        .config("spark.driver.extraJavaOptions", "-Duser.timezone=UTC")
+        .config("spark.executor.extraJavaOptions", "-Duser.timezone=UTC")
+        .config("spark.sql.session.timeZone", "UTC")
+        .getOrCreate()
+    )
+
+
+def _safe_ts(col_expr):
+    """
+    Parse a string column to TIMESTAMP tolerating multiple real-world formats.
+    Returns NULL instead of raising for unrecognised values.
+    """
+    from pyspark.sql import functions as F
+
+    raw = F.trim(col_expr.cast("string"))
+    return (
+        F.when(raw.rlike(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"), F.to_timestamp(raw, "yyyy-MM-dd'T'HH:mm:ss"))
+        .when(raw.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"), F.to_timestamp(raw, "yyyy-MM-dd HH:mm:ss"))
+        .when(raw.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd HH:mm"))
+        .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}"), F.to_timestamp(raw, "dd.MM.yyyy HH:mm:ss"))
+        .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$"), F.to_timestamp(raw, "dd.MM.yyyy HH:mm"))
+        .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4}$"), F.to_timestamp(raw, "dd.MM.yyyy"))
+        .when(raw.rlike(r"^\d{4}-\d{2}-\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd"))
+        .otherwise(F.lit(None).cast("timestamp"))
+    )
+
+
 def _normalize_silver_df(df, source_name: str):
     from pyspark.sql import functions as F
 
     fallback_source_name = source_name.replace("_", " ").title().replace("Comua", "ComUA")
-
     columns = set(df.columns)
 
-    def existing_or_null(column_name: str):
-        return F.col(column_name) if column_name in columns else F.lit(None)
+    def existing_or_null(name: str):
+        return F.col(name) if name in columns else F.lit(None).cast("string")
 
-    def coalesce_existing(*column_names: str, fallback):
-        expressions = [F.col(name) for name in column_names if name in columns]
-        expressions.append(fallback)
-        return F.coalesce(*expressions)
+    def coalesce_existing(*names: str, fallback):
+        exprs = [F.col(n) for n in names if n in columns]
+        exprs.append(fallback)
+        return F.coalesce(*exprs)
 
-    def parse_ts_safe(column_name: str):
-        raw = F.trim(existing_or_null(column_name).cast("string"))
-        return (
-            F.when(raw.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd HH:mm:ss"))
-            .when(raw.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd HH:mm"))
-            .when(raw.rlike(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$"), F.to_timestamp(raw, "yyyy-MM-dd'T'HH:mm:ss"))
-            .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$"), F.to_timestamp(raw, "dd.MM.yyyy HH:mm:ss"))
-            .when(raw.rlike(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$"), F.to_timestamp(raw, "dd.MM.yyyy HH:mm"))
-            .otherwise(F.lit(None).cast("timestamp"))
-        )
-
-    ts_col = F.coalesce(
-        parse_ts_safe("source_timestamp"),
-        parse_ts_safe("processed_at"),
-        parse_ts_safe("extracted_at"),
-    )
+    # resolve event timestamp safely from whichever column exists
+    ts_candidates = [c for c in ("source_timestamp", "processed_at", "extracted_at") if c in columns]
+    if ts_candidates:
+        event_ts = F.coalesce(*[_safe_ts(F.col(c)) for c in ts_candidates])
+    else:
+        event_ts = F.lit(None).cast("timestamp")
 
     return (
         df.withColumn("source", coalesce_existing("source", fallback=F.lit(source_name)))
@@ -147,24 +179,18 @@ def _normalize_silver_df(df, source_name: str):
         .withColumn("price_type", coalesce_existing("price_type", fallback=F.lit("unknown")))
         .withColumn("delivery_term", existing_or_null("delivery_term"))
         .withColumn("grade", existing_or_null("grade"))
-        .withColumn("event_ts", ts_col)
+        .withColumn("event_ts", event_ts)
         .withColumn("calendar_date", F.to_date(F.col("event_ts")))
-        .filter(F.col("price_usd").isNotNull() & (F.col("price_usd") > F.lit(0.0)) & F.col("calendar_date").isNotNull())
+        .filter(
+            F.col("price_usd").isNotNull()
+            & (F.col("price_usd") > F.lit(0.0))
+            & F.col("calendar_date").isNotNull()
+        )
         .select(
-            "source",
-            "source_name",
-            "data_type",
-            "commodity_name",
-            "grade",
-            "market_name",
-            "market_exchange",
-            "market_country",
-            "currency_code",
-            "price_usd",
-            "volume",
-            "price_type",
-            "delivery_term",
-            "calendar_date",
+            "source", "source_name", "data_type", "commodity_name", "grade",
+            "market_name", "market_exchange", "market_country",
+            "currency_code", "price_usd", "volume",
+            "price_type", "delivery_term", "calendar_date",
         )
     )
 
@@ -173,33 +199,17 @@ def _build_dim_date(silver_df):
     from pyspark.sql import functions as F
 
     return (
-        silver_df.select("calendar_date")
-        .dropDuplicates(["calendar_date"])
-        .withColumn("date_key", F.date_format(F.col("calendar_date"), "yyyyMMdd").cast("int"))
-        .withColumn("year", F.year(F.col("calendar_date")).cast("int"))
-        .withColumn("quarter", F.quarter(F.col("calendar_date")).cast("int"))
-        .withColumn("month", F.month(F.col("calendar_date")).cast("int"))
-        .withColumn("day", F.dayofmonth(F.col("calendar_date")).cast("int"))
-        .withColumn("week_of_year", F.weekofyear(F.col("calendar_date")).cast("int"))
-        .withColumn("day_of_week", F.date_format(F.col("calendar_date"), "EEEE"))
-        .withColumn("is_weekend", F.dayofweek(F.col("calendar_date")).isin(1, 7))
-        .withColumn("is_holiday", F.lit(False))
-        .withColumn("trading_status", F.lit("active"))
-        .select(
-            "date_key",
-            "calendar_date",
-            "year",
-            "quarter",
-            "month",
-            "day",
-            "week_of_year",
-            "day_of_week",
-            "is_weekend",
-            "is_holiday",
-            "trading_status",
-        )
+        silver_df.select(F.col("calendar_date"))
+        .distinct()
+        .withColumn("year", F.year("calendar_date"))
+        .withColumn("month", F.month("calendar_date"))
+        .withColumn("day", F.dayofmonth("calendar_date"))
+        .withColumn("quarter", F.quarter("calendar_date"))
+        .withColumn("week_of_year", F.weekofyear("calendar_date"))
+        .withColumn("day_of_week", F.dayofweek("calendar_date"))
+        .withColumn("is_weekend", (F.dayofweek("calendar_date").isin(1, 7)).cast("boolean"))
     )
-
+# ...existing code...
 
 def _build_dim_commodity(silver_df):
     from pyspark.sql import functions as F
@@ -490,14 +500,7 @@ with DAG(
                 "fact_inserted": 0,
             }
 
-        from pyspark.sql import SparkSession
-
-        spark = (
-            SparkSession.builder.appName("warehouse_load_dag")
-            .config("spark.sql.session.timeZone", "UTC")
-            .config("spark.sql.shuffle.partitions", "8")
-            .getOrCreate()
-        )
+        spark = _create_spark_session()
 
         try:
             source_dfs = []

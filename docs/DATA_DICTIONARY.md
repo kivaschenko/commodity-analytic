@@ -229,6 +229,22 @@ After transformation, all sources are normalized to a common schema:
 | country | VARCHAR(50) | Primary country | United States |
 | created_at | TIMESTAMP | Creation time | 2026-04-07 12:00:00 |
 
+#### dim_exchange_rate
+| Column | Type | Description | Example |
+|--------|------|-------------|---------|
+| exchange_rate_key | INTEGER | Surrogate key | 1 |
+| date_key | INTEGER | FK to dim_date (YYYYMMDD) | 20260407 |
+| base_currency | VARCHAR(3) | Base currency (restricted) | USD |
+| quote_currency | VARCHAR(3) | Quote currency (restricted) | UAH |
+| exchange_rate | DECIMAL(10,6) | Official daily FX rate | 39.421300 |
+| source | VARCHAR(50) | FX provider | NBU |
+| created_at | TIMESTAMP | Record creation time | 2026-04-07 13:00:00 |
+
+Notes:
+- Warehouse loading stores only daily NBU pairs USD/UAH and EUR/UAH.
+- For the same day and pair, the latest extracted record is used.
+- Loading is idempotent: new natural keys are inserted, existing keys are updated when rate/source changes.
+
 ### 3.2 Fact Table
 
 #### commodity_prices_fact

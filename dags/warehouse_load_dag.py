@@ -15,6 +15,8 @@ from typing import Any, Dict
 from urllib.parse import unquote, urlparse
 
 import pandas as pd
+import psycopg2
+from psycopg2.extras import execute_values
 from airflow.sdk import DAG, task
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +29,9 @@ from staging.staging_handler import StagingHandler  # noqa: E402
 logger = logging.getLogger(__name__)
 
 SOURCES = ["yfinance", "graintradecomua", "tripoli_land"]
+FX_SOURCE = "currency"
+FX_ALLOWED_BASE_CURRENCIES = ("USD", "EUR")
+FX_QUOTE_CURRENCY = "UAH"
 
 
 def _storage_type() -> str:
@@ -50,6 +55,21 @@ def _parse_database_url(db_url: str) -> Dict[str, Any]:
         "user": user,
         "password": password,
         "driver": "org.postgresql.Driver",
+    }
+
+
+def _parse_postgres_connection_kwargs(db_url: str) -> Dict[str, Any]:
+    """Parse DB URL and return psycopg2 connection kwargs."""
+    parsed = urlparse(db_url)
+    if not parsed.scheme.startswith("postgresql"):
+        raise ValueError(f"Unsupported warehouse driver in DB URL: {parsed.scheme}")
+
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 5432,
+        "dbname": parsed.path.lstrip("/"),
+        "user": unquote(parsed.username or ""),
+        "password": unquote(parsed.password or ""),
     }
 
 
@@ -223,6 +243,150 @@ def _build_dim_date(silver_df):
             "is_weekend",
         )
     )
+
+
+def _build_fx_rates_df(currency_df):
+    """Build daily FX rows for dim_exchange_rate from raw currency records."""
+    from pyspark.sql import Window
+    from pyspark.sql import functions as F
+
+    columns = set(currency_df.columns)
+
+    def existing_or_null(name: str):
+        return F.col(name) if name in columns else F.lit(None).cast("string")
+
+    prepared = (
+        currency_df.withColumn("provider_norm", F.lower(F.trim(existing_or_null("provider"))))
+        .withColumn("note_norm", F.lower(F.trim(existing_or_null("note"))))
+        .withColumn("base_currency", F.upper(F.trim(existing_or_null("base_currency"))))
+        .withColumn("quote_currency", F.upper(F.trim(existing_or_null("quote_currency"))))
+        .withColumn("exchange_rate", existing_or_null("rate").cast("double"))
+        .withColumn("event_ts", F.coalesce(_safe_ts(existing_or_null("source_timestamp")), _safe_ts(existing_or_null("extracted_at"))))
+        .withColumn("calendar_date", F.to_date(F.col("event_ts")))
+        .withColumn("source", F.lit("NBU"))
+        .filter(F.col("provider_norm") == F.lit("nbu"))
+        .filter(F.col("note_norm") == F.lit("ok"))
+        .filter(F.col("base_currency").isin(*FX_ALLOWED_BASE_CURRENCIES))
+        .filter(F.col("quote_currency") == F.lit(FX_QUOTE_CURRENCY))
+        .filter(F.col("exchange_rate").isNotNull() & (F.col("exchange_rate") > F.lit(0.0)))
+        .filter(F.col("calendar_date").isNotNull())
+    )
+
+    row_window = Window.partitionBy("calendar_date", "base_currency", "quote_currency").orderBy(
+        F.col("event_ts").desc_nulls_last()
+    )
+
+    return (
+        prepared.withColumn("rn", F.row_number().over(row_window))
+        .filter(F.col("rn") == 1)
+        .withColumn("date_key", F.date_format("calendar_date", "yyyyMMdd").cast("int"))
+        .select("date_key", "calendar_date", "base_currency", "quote_currency", "exchange_rate", "source")
+    )
+
+
+def _upsert_dim_exchange_rate(spark, jdbc: Dict[str, str], fx_rates_df) -> Dict[str, int]:
+    """
+    Upsert dim_exchange_rate by natural key (date_key, base_currency, quote_currency).
+    - Insert new natural keys.
+    - Update exchange_rate/source for existing natural keys when values change.
+    """
+    from pyspark.sql import Window
+    from pyspark.sql import functions as F
+
+    incoming = fx_rates_df.select(
+        "date_key", "base_currency", "quote_currency", "exchange_rate", "source"
+    ).dropDuplicates(["date_key", "base_currency", "quote_currency"])
+
+    incoming_count = int(incoming.count())
+    if incoming_count == 0:
+        return {"inserted": 0, "updated": 0, "skipped": 0}
+
+    existing = _read_table_or_empty(spark, jdbc, "dim_exchange_rate")
+
+    if existing is None:
+        start_key = 1
+        keyed_df = incoming.withColumn(
+            "exchange_rate_key",
+            (
+                F.row_number().over(
+                    Window.orderBy(
+                        F.col("date_key"), F.col("base_currency"), F.col("quote_currency")
+                    )
+                )
+                + F.lit(start_key - 1)
+            ).cast("int"),
+        ).select(
+            "exchange_rate_key",
+            "date_key",
+            "base_currency",
+            "quote_currency",
+            "exchange_rate",
+            "source",
+        )
+        _write_jdbc_append(keyed_df, jdbc, "dim_exchange_rate")
+        return {"inserted": incoming_count, "updated": 0, "skipped": 0}
+
+    key_cols = ["date_key", "base_currency", "quote_currency"]
+    existing_keys = existing.select(*key_cols, "exchange_rate", "source")
+
+    new_rows = incoming.join(existing_keys.select(*key_cols), key_cols, "left_anti")
+    new_count = int(new_rows.count())
+
+    if new_count > 0:
+        start_key = _next_key(existing, "exchange_rate_key")
+        keyed_new_rows = new_rows.withColumn(
+            "exchange_rate_key",
+            (
+                F.row_number().over(
+                    Window.orderBy(
+                        F.col("date_key"), F.col("base_currency"), F.col("quote_currency")
+                    )
+                )
+                + F.lit(start_key - 1)
+            ).cast("int"),
+        ).select(
+            "exchange_rate_key",
+            "date_key",
+            "base_currency",
+            "quote_currency",
+            "exchange_rate",
+            "source",
+        )
+        _write_jdbc_append(keyed_new_rows, jdbc, "dim_exchange_rate")
+
+    changed_rows = (
+        incoming.alias("n")
+        .join(existing_keys.alias("e"), key_cols, "inner")
+        .filter(
+            (F.round(F.col("n.exchange_rate"), 6) != F.round(F.col("e.exchange_rate").cast("double"), 6))
+            | (F.coalesce(F.col("n.source"), F.lit("")) != F.coalesce(F.col("e.source"), F.lit("")))
+        )
+        .select("n.date_key", "n.base_currency", "n.quote_currency", "n.exchange_rate", "n.source")
+    )
+
+    updates = [tuple(row) for row in changed_rows.collect()]
+    updated_count = len(updates)
+
+    if updated_count > 0:
+        conn_kwargs = _parse_postgres_connection_kwargs(settings.database_url)
+        with psycopg2.connect(**conn_kwargs) as conn:
+            with conn.cursor() as cursor:
+                execute_values(
+                    cursor,
+                    """
+                    UPDATE dim_exchange_rate AS t
+                    SET exchange_rate = src.exchange_rate,
+                        source = src.source
+                    FROM (VALUES %s) AS src(date_key, base_currency, quote_currency, exchange_rate, source)
+                    WHERE t.date_key = src.date_key
+                      AND t.base_currency = src.base_currency
+                      AND t.quote_currency = src.quote_currency
+                    """,
+                    updates,
+                )
+
+    skipped_count = incoming_count - new_count - updated_count
+    return {"inserted": new_count, "updated": updated_count, "skipped": skipped_count}
 
 def _build_dim_commodity(silver_df):
     from pyspark.sql import functions as F
@@ -495,11 +659,28 @@ with DAG(
             }
             total_count += count
 
+        # Keep currency in bronze and load a lightweight parquet snapshot for FX dimension upsert.
+        currency_handler = StagingHandler(storage_type=_storage_type(), layer="bronze")
+        currency_records = currency_handler.load_latest_records(FX_SOURCE)
+        currency_count = len(currency_records)
+        currency_path = run_dir / f"{FX_SOURCE}.parquet"
+
+        if currency_count > 0:
+            pd.DataFrame(currency_records).to_parquet(currency_path, index=False)
+            currency_status = "staged"
+        else:
+            currency_status = "no_data"
+
         return {
             "status": "loaded" if total_count > 0 else "no_data",
             "record_count": int(total_count),
             "run_dir": str(run_dir),
             "sources": sources_manifest,
+            "currency_rates": {
+                "status": currency_status,
+                "record_count": int(currency_count),
+                "path": str(currency_path),
+            },
         }
 
     @task()
@@ -545,9 +726,23 @@ with DAG(
                 ["calendar_date", "commodity_name", "market_name", "source_name", "currency_code", "price_type"]
             )
 
+            fx_manifest = silver_manifest.get("currency_rates", {})
+            fx_rates_daily_df = None
+            if fx_manifest.get("record_count", 0) > 0:
+                fx_path = fx_manifest.get("path")
+                if fx_path and Path(fx_path).exists():
+                    raw_currency_df = spark.read.parquet(fx_path)
+                    fx_rates_daily_df = _build_fx_rates_df(raw_currency_df)
+
             jdbc = _parse_database_url(settings.database_url)
 
-            dim_date_df = _build_dim_date(silver_df)
+            dim_date_input_df = silver_df.select("calendar_date")
+            if fx_rates_daily_df is not None:
+                dim_date_input_df = dim_date_input_df.unionByName(
+                    fx_rates_daily_df.select("calendar_date"), allowMissingColumns=True
+                )
+
+            dim_date_df = _build_dim_date(dim_date_input_df)
             dim_commodity_df = _build_dim_commodity(silver_df)
             dim_market_df = _build_dim_market(silver_df)
             dim_source_df = _build_dim_source(silver_df)
@@ -560,6 +755,7 @@ with DAG(
                 "dim_source": 0,
                 "dim_currency": 0,
             }
+            fx_upsert_stats = {"inserted": 0, "updated": 0, "skipped": 0}
 
             existing_dim_date = _read_table_or_empty(spark, jdbc, "dim_date")
             if existing_dim_date is not None:
@@ -584,6 +780,9 @@ with DAG(
                 spark, jdbc, dim_currency_df, "dim_currency", "currency_key", "currency_code"
             )
 
+            if fx_rates_daily_df is not None:
+                fx_upsert_stats = _upsert_dim_exchange_rate(spark, jdbc, fx_rates_daily_df)
+
             dims = _load_dim_tables(spark, jdbc)
             if any(value is None for value in dims.values()):
                 raise RuntimeError("One or more dimension tables are not readable after dimension loading")
@@ -602,6 +801,7 @@ with DAG(
                 "status": "loaded",
                 "silver_records": int(silver_manifest.get("record_count", 0)),
                 "dim_inserted": inserted_counts,
+                "fx_rates": fx_upsert_stats,
                 "fact_inserted": int(fact_rows),
             }
         finally:

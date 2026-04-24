@@ -52,6 +52,17 @@ Raw Data → Cleaning → Normalization → Enrichment → Silver Layer (Parquet
 2. Pass only lightweight metadata through Airflow XCom (status, counts, local parquet paths)
 3. Run Spark session to read per-source Parquet files, normalize schema, and load dimensions via JDBC
 4. Build fact rows by joining resolved dimensions and load `commodity_prices_fact` with idempotent anti-join keys
+5. Stage latest bronze `currency` snapshot and upsert daily `dim_exchange_rate` rows for NBU `USD/UAH` and `EUR/UAH`
+
+### ✅ FX Dimension Loading: Implemented
+
+**Behavior implemented in `warehouse_load_dag.py`:**
+1. Read latest `currency` extraction from bronze staging in each warehouse run
+2. Filter to provider `NBU`, valid records (`note=ok`), and pairs `USD/UAH`, `EUR/UAH` only
+3. Keep latest record per day and pair, map to `date_key` via `dim_date`
+4. Upsert `dim_exchange_rate` by natural key (`date_key`, `base_currency`, `quote_currency`):
+	- insert when key is new
+	- update when `exchange_rate` or `source` changed
 
 ### 📋 Remaining Tasks
 

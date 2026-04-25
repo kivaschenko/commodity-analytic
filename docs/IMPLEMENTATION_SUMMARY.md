@@ -54,6 +54,14 @@ Raw Data → Cleaning → Normalization → Enrichment → Silver Layer (Parquet
 4. Build fact rows by joining resolved dimensions and load `commodity_prices_fact` with idempotent anti-join keys
 5. Stage latest bronze `currency` snapshot and upsert daily `dim_exchange_rate` rows for NBU `USD/UAH` and `EUR/UAH`
 
+### ✅ Aggregate Refresh Orchestration: Implemented
+
+**Implemented in `aggregate_refresh_dag.py`:**
+1. Rebuild `daily_price_summary` from `commodity_prices_fact` (OHLCV + source/record counts)
+2. Rebuild `weekly_commodity_summary` grouped by `(year, week_of_year, commodity_key)`
+3. Rebuild `monthly_commodity_summary` grouped by `(year, month, commodity_key)` with volatility
+4. Execute refresh in one DB transaction for consistent snapshots and verify output counts
+
 ### ✅ FX Dimension Loading: Implemented
 
 **Behavior implemented in `warehouse_load_dag.py`:**

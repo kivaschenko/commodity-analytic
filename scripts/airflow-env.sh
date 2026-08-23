@@ -42,7 +42,7 @@ export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@localhost
 log "Database connection set to local PostgreSQL with user 'airflow' and database 'airflow'."
 
 # ── Celery broker (local Redis, DB 2) ─────────────────────────────────────────
-export AIRFLOW__CELERY__BROKER_URL="${AIRFLOW__CELERY__BROKER_URL:-redis://default:blackoutdaily@65.108.142.153:6379/2}"
+export AIRFLOW__CELERY__BROKER_URL="${AIRFLOW__CELERY__BROKER_URL:-redis://default:blackoutdaily@localhost:6379/1}"
 if [[ -z "$AIRFLOW__CELERY__BROKER_URL" ]]; then
     log "  [WARNING] AIRFLOW__CELERY__BROKER_URL is not set! "
 else

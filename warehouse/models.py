@@ -3,7 +3,7 @@ Data Models - ORM/dataclass models for warehouse entities.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -21,7 +21,7 @@ class DimDate:
     is_weekend: bool
     is_holiday: bool = False
     trading_status: str = "active"
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -35,7 +35,7 @@ class DimCommodity:
     grade: Optional[str] = None
     origin_country: Optional[str] = None
     is_active: bool = True
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None
 
 
@@ -49,7 +49,7 @@ class DimMarket:
     timezone: str
     trading_hours: str
     is_active: bool = True
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None
 
 
@@ -64,7 +64,7 @@ class DimSource:
     update_frequency: str
     api_endpoint: Optional[str] = None
     is_active: bool = True
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None
 
 
@@ -75,7 +75,19 @@ class DimCurrency:
     currency_code: str  # ISO 4217
     currency_name: str
     country: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class DimExchangeRate:
+    """Exchange rate dimension record."""
+    exchange_rate_key: int
+    date_key: int
+    base_currency: str  # ISO 4217
+    quote_currency: str  # ISO 4217
+    exchange_rate: float
+    source: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -95,8 +107,12 @@ class CommodityPriceFact:
     low_price: float
     volume: float
     
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    # Classification
+    price_type: str = "spot"  # "futures_close", "spot", "bid", "fx_rate"
+    delivery_term: Optional[str] = None  # "FCA", "CPT", "CIF", "FOB"
+    
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -119,7 +135,7 @@ class DailyPriceSummary:
     source_count: int = 0
     record_count: int = 0
     
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -135,7 +151,7 @@ class WeeklyCommoditySummary:
     max_price: float
     total_volume: float
     
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -152,4 +168,4 @@ class MonthlyCommoditySummary:
     total_volume: float
     price_volatility: Optional[float] = None
     
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

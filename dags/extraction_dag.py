@@ -1,6 +1,6 @@
 """
 Extraction DAG - Daily extraction of commodity prices from all sources.
-Phase 5: Data Pipeline Orchestration (Extraction)
+Phase 1: Data Pipeline Orchestration (Extraction)
 
 Schedule: Daily at midnight UTC (0 0 * * *)
 """
@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 from airflow.sdk import DAG, task
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,7 +19,7 @@ default_args = {
     "owner": "data-engineering",
     "depends_on_past": False,
     "start_date": datetime(2025, 1, 1),
-    "email": ["airflow@example.com"],
+    "email": ["civaschenko@yahoo.com"],
     "email_on_failure": True,
     "email_on_retry": False,
     "retries": 3,
@@ -129,9 +130,18 @@ with DAG(
     tripoli_land = extract_tripoli_land()
 
     consolidated = consolidate_extractions(
-        yfinance, 
-        graintradecomua, 
-        currency, 
+        yfinance,
+        graintradecomua,
+        currency,
         tripoli_land,
     )
     staged = stage_raw_data(consolidated)
+
+    trigger_quality_checks = TriggerDagRunOperator(
+        task_id="trigger_quality_checks_dag",
+        trigger_dag_id="quality_checks_dag",
+        conf={"triggered_by": "extraction_dag"},
+        wait_for_completion=False,
+    )
+
+    staged >> trigger_quality_checks

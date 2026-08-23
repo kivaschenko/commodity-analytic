@@ -7,13 +7,12 @@ Manual trigger for backfilling gaps or recovering from failures.
 
 from datetime import datetime, timedelta
 from airflow.sdk import DAG, task
-from airflow.models import Variable
+from airflow.sdk.definitions.param import ParamsDict
 
 default_args = {
     "owner": "data-engineering",
     "depends_on_past": False,
-    "start_date": datetime(2025, 1, 1),
-    "email": ["airflow@example.com"],
+    "email": ["civaschenko@yahoo.com"],
     "email_on_failure": True,
     "retries": 3,
     "retry_delay": timedelta(minutes=10),
@@ -25,19 +24,19 @@ with DAG(
     description="Backfill historical data and recover from failures",
     schedule=None,  # Manual trigger
     catchup=False,
+    start_date=None,
+    end_date=datetime(2026, 12, 31),
     tags=["backfill", "manual", "recovery"],
-    params={
-        "start_date": "2025-01-01",
-        "end_date": "2025-01-31",
-        "sources": ["yfinance", "graintradecomua", "currency", "tripoli_land"],
-    },
+    params=ParamsDict(
+        dict(
+            sources=["yfinance", "graintradecomua", "currency", "tripoli_land"],
+        ),
+    ),
 ) as dag:
 
     @task()
     def extract_historical_data(
-        start_date="{{ params.start_date }}",
-        end_date="{{ params.end_date }}",
-        sources="{{ params.sources }}",
+        sources="{{ params.sources }}", start_date=None, end_date="2026-12-31"
     ):
         """Extract historical data for date range and sources."""
         # TODO: Implement historical extraction

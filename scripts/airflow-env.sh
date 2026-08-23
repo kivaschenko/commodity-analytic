@@ -41,15 +41,19 @@ export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@localhost
 
 log "Database connection set to local PostgreSQL with user 'airflow' and database 'airflow'."
 
-# ── Celery broker (local Redis, DB 0) ─────────────────────────────────────────
-export AIRFLOW__CELERY__BROKER_URL=redis://:@localhost:6379/0
-
-log "Celery broker set to local Redis on database 0."
+# ── Celery broker (local Redis, DB 2) ─────────────────────────────────────────
+export AIRFLOW__CELERY__BROKER_URL="${AIRFLOW__CELERY__BROKER_URL:-redis://default:blackoutdaily@localhost:6379/1}"
+if [[ -z "$AIRFLOW__CELERY__BROKER_URL" ]]; then
+    log "  [WARNING] AIRFLOW__CELERY__BROKER_URL is not set! "
+else
+    log "Celery broker set to local Redis on database 2."
+fi
 
 # ── Execution API (Airflow 3 — points to the local api-server) ────────────────
-export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:8080/execution/
+export AIRFLOW_API_SERVER_PORT="${AIRFLOW_API_SERVER_PORT:-8888}"
+export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:${AIRFLOW_API_SERVER_PORT}/execution/
 
-log "Execution API server URL set to http://localhost:8080/execution/"
+log "Execution API server URL set to http://localhost:${AIRFLOW_API_SERVER_PORT}/execution/"
 
 # ── Security ───────────────────────────────────────────────────────────────────
 # Generate once with:  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -64,8 +68,16 @@ if [[ -z "$AIRFLOW__CORE__FERNET_KEY" ]]; then
 else
     log "  Fernet key is set."
 fi
-log "  JWT secret: ${AIRFLOW__API_AUTH__JWT_SECRET:+[SET]}"
-log "  API secret: ${AIRFLOW__API__SECRET_KEY:+[SET]}"
+if [[ -z "$AIRFLOW__API_AUTH__JWT_SECRET" ]]; then
+    log " [WARNING] AIRFLOW__API_AUTH__JWT_SECRET is not set! Generate an API Auth JWT Secret and set it in your environment."
+else
+    log "  JWT secret is set."
+fi
+if [[ -z "$AIRFLOW__API__SECRET_KEY" ]]; then
+    log " [WARNING] AIRFLOW__API__SECRET_KEY is not set! Generate an API Secret Key and set it in your environment."
+else
+    log "  API secret is set."
+fi
 
 # ── Behaviour ──────────────────────────────────────────────────────────────────
 export AIRFLOW__CORE__LOAD_EXAMPLES=false

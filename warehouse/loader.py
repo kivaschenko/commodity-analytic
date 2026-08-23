@@ -5,7 +5,7 @@ Implements incremental loading, upserts, and merges.
 
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class WarehouseLoader:
             "operation": "load_dimension",
             "table": table_name,
             "load_type": load_type,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": stats
         })
 
@@ -122,7 +122,7 @@ class WarehouseLoader:
             "operation": "load_fact",
             "table": table_name,
             "partition": partition_column,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": stats
         })
 
@@ -161,7 +161,7 @@ class WarehouseLoader:
 
         self.load_log.append({
             "operation": "refresh_aggregates",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": stats
         })
 
@@ -199,5 +199,5 @@ class WarehouseLoader:
         return {
             "operations_count": len(self.load_log),
             "operations": self.load_log,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }

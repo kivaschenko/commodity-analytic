@@ -37,20 +37,30 @@ log "Auth manager: $AIRFLOW__CORE__AUTH_MANAGER"
 
 # ── Database (local PostgreSQL) ────────────────────────────────────────────────
 export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@localhost:5432/airflow
+if [[ -z "$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN" ]]; then
+    log "  [WARNING] AIRFLOW__DATABASE__SQL_ALCHEMY_CONN is not set! Defaulting to local PostgreSQL connection."
+else
+    log "Database connection set to: $AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
+fi
 export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@localhost:5432/airflow
 
 log "Database connection set to local PostgreSQL with user 'airflow' and database 'airflow'."
 
 # ── Celery broker (local Redis, DB 2) ─────────────────────────────────────────
-export AIRFLOW__CELERY__BROKER_URL="${AIRFLOW__CELERY__BROKER_URL:-redis://default:blackoutdaily@localhost:6379/1}"
+export AIRFLOW__CELERY__BROKER_URL="${AIRFLOW__CELERY__BROKER_URL:-redis://localhost:6379/1}"
 if [[ -z "$AIRFLOW__CELERY__BROKER_URL" ]]; then
-    log "  [WARNING] AIRFLOW__CELERY__BROKER_URL is not set! "
+    log "  [WARNING] AIRFLOW__CELERY__BROKER_URL is not set! Defaulting to local Redis connection."
 else
-    log "Celery broker set to local Redis on database 2."
+    log "Celery broker set to local Redis on database $AIRFLOW__CELERY__BROKER_URL."
 fi
 
 # ── Execution API (Airflow 3 — points to the local api-server) ────────────────
 export AIRFLOW_API_SERVER_PORT="${AIRFLOW_API_SERVER_PORT:-8888}"
+if [[ -z "$AIRFLOW_API_SERVER_PORT" ]]; then
+    log "  [WARNING] AIRFLOW_API_SERVER_PORT is not set! Defaulting to 8888."
+else
+    log "Execution API server port set to $AIRFLOW_API_SERVER_PORT."
+fi
 export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:${AIRFLOW_API_SERVER_PORT}/execution/
 
 log "Execution API server URL set to http://localhost:${AIRFLOW_API_SERVER_PORT}/execution/"

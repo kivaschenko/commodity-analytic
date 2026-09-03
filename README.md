@@ -112,7 +112,11 @@ All DAGs use chained triggering (`TriggerDagRunOperator`) so a failure in qualit
 
 ### Airflow DAG Graph View
 
-> *(screenshot from production server — to be added)*
+<img src="screenshots/Screenshot from 2026-09-03 11-39-15.png">
+
+---
+
+<img src="screenshots/Screenshot from 2026-09-03 11-42-39.png">
 
 A live view of the `extraction_dag` graph showing parallel task execution across four data source parsers, with the downstream trigger to `quality_checks_dag`.
 
@@ -128,8 +132,9 @@ The Airflow UI listing all five DAGs with run history, success/failure indicator
 
 ### MinIO Object Storage — Bronze Layer
 
-> *(screenshot from production server — to be added)*
-
+<img src="screenshots/Screenshot from 2026-09-03 11-45-45.png">
+---
+<img src="screenshots/Screenshot from 2026-09-03 11-46-06.png">
 Raw JSON and Parquet files organized in date-partitioned prefixes inside the MinIO `bronze` bucket, as deposited by the extraction DAG.
 
 ---

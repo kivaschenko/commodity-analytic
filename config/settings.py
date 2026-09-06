@@ -54,7 +54,7 @@ class Settings:
     def _load_dev_settings(self) -> None:
         """Development environment settings."""
         self.database_url = os.getenv(
-            "DB_URL",
+            "DATABASE_URL",
             "postgresql+psycopg2://warehouse_user:teomeo2358@localhost:5432/commodity_warehouse",
         )
         self.data_lake_path = os.getenv("DATA_LAKE_PATH", "./data_lake")
@@ -75,7 +75,7 @@ class Settings:
 
     def _load_staging_settings(self) -> None:
         """Staging environment settings."""
-        self.database_url = os.getenv("DB_URL_STAGING")
+        self.database_url = os.getenv("DATABASE_URL_STAGING")
         self.data_lake_path = os.getenv(
             "DATA_LAKE_PATH_STAGING", "s3://data-lake-staging"
         )
@@ -96,7 +96,7 @@ class Settings:
 
     def _load_prod_settings(self) -> None:
         """Production environment settings."""
-        self.database_url = os.getenv("DB_URL_PROD")
+        self.database_url = os.getenv("DATABASE_URL_PROD")
         self.data_lake_path = os.getenv("DATA_LAKE_PATH_PROD", "s3://data-lake-prod")
         self.warehouse_type = "snowflake"
         self.staging_enabled = True

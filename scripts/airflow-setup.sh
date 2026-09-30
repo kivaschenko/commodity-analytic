@@ -66,7 +66,7 @@ if [[ "$BROKER_URL" =~ redis://([^:@]*:[^@]*@)?([^:]+):([0-9]+) ]]; then
     fi
     
     # Build redis-cli command with optional authentication
-    REDIS_CMD=(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT")
+    REDIS_CMD=(valkey-cli -h "$REDIS_HOST" -p "$REDIS_PORT")
     if [[ -n "$REDIS_PASS" ]]; then
         REDIS_CMD+=(-a "$REDIS_PASS")
     fi

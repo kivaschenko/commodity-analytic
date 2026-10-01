@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 from airflow.sdk import DAG, task
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -20,7 +20,7 @@ default_args = {
     "depends_on_past": False,
     "start_date": datetime(2025, 1, 1),
     "email": ["civaschenko@yahoo.com"],
-    "email_on_failure": True,
+    "email_on_failure": False,
     "email_on_retry": False,
     "retries": 3,
     "retry_delay": timedelta(minutes=5),

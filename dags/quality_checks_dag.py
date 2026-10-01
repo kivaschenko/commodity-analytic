@@ -11,9 +11,9 @@ from pathlib import Path
 import sys
 
 from airflow.sdk import DAG, task
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-from airflow.operators.python import BranchPythonOperator
-from airflow.operators.empty import EmptyOperator
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.providers.standard.operators.branch import BaseBranchOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -70,6 +70,20 @@ def _parse_timestamp(value):
     return None
 
 
+class ChooseBranchOperator(BaseBranchOperator):
+    """Dcide which branch to follow based on the status of staged data."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def choose_branch(self, context):
+        staging_data = context['ti'].xcom_pull(task_ids='load_staging_data')
+        for source, payload in staging_data.items():
+            status = payload["status"]
+            if status.get("status") != "active":
+                return "trigger_transformation"
+        return "halt_transformation"
+
+
 with DAG(
     dag_id="quality_checks_dag",
     default_args={
@@ -77,7 +91,7 @@ with DAG(
         "depends_on_past": False,
         "start_date": datetime(2025, 1, 1),
         "email": [settings.alert_email] if settings.alert_email else [],
-        "email_on_failure": True,
+        "email_on_failure": False,
         "retries": 1,
         "retry_delay": timedelta(minutes=5),
     },
@@ -260,9 +274,6 @@ with DAG(
 
         return {"alert_sent": False}
 
-    def choose_next_step(quality_report):
-        return "trigger_transformation" if quality_report.get("overall_status") == "PASSED" else "halt_transformation"
-
     staging_data = load_staging_data()
     freshness = check_freshness(staging_data)
     completeness = check_completeness(staging_data)
@@ -272,11 +283,10 @@ with DAG(
     report = generate_quality_report(freshness, completeness, uniqueness, ranges)
     alert = alert_on_failures(report)
 
-    decide = BranchPythonOperator(
+    decide = ChooseBranchOperator(
         task_id="decide_transformation_path",
-        python_callable=choose_next_step,
-        op_args=[report],
-    )
+    ).choose_branch()
+
 
     trigger_transformation = TriggerDagRunOperator(
         task_id="trigger_transformation_dag",

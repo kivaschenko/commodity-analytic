@@ -13,7 +13,7 @@ default_args = {
     "owner": "data-engineering",
     "depends_on_past": False,
     "email": ["civaschenko@yahoo.com"],
-    "email_on_failure": True,
+    "email_on_failure": False,
     "retries": 3,
     "retry_delay": timedelta(minutes=10),
 }

@@ -9,7 +9,7 @@ Depends on: transformation_dag
 import logging
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import unquote, urlparse
@@ -635,7 +635,7 @@ with DAG(
         Returns only a lightweight manifest to avoid large XCom payloads.
         """
         handler = StagingHandler(storage_type=_storage_type(), layer="silver")
-        run_dir = Path(tempfile.gettempdir()) / "warehouse_silver" / datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        run_dir = Path(tempfile.gettempdir()) / "warehouse_silver" / datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
         run_dir.mkdir(parents=True, exist_ok=True)
 
         sources_manifest: Dict[str, Dict[str, Any]] = {}

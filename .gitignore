@@ -209,7 +209,7 @@ __marimo__/
 # Airflow
 airflow.db*
 logs/
-# simple_auth_manager_passwords.json.generated
+simple_auth_manager_passwords.json.generated
 
 # Minio
 minio/data/

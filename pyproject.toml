@@ -15,6 +15,7 @@ dependencies = [
     "boto3>=1.43.103",
     "celery-valkey-backend>=0.1.0",
     "pandas>=3.0.6",
+    "pyarrow>=25.0.1",
     "pyspark>=4.2.0",
     "sqlalchemy>=2.1.1",
     "yfinance>=1.7.0",

@@ -82,6 +82,42 @@ def create_analytical_views(connection=None) -> bool:
         return False
 
 
+def upgrade_warehouse_schema(connection=None) -> bool:
+    """
+    Apply backward-compatible warehouse schema upgrades.
+
+    Args:
+        connection: Database connection
+
+    Returns:
+        True if successful
+    """
+    if connection is None:
+        logger.error("No database connection provided")
+        return False
+
+    try:
+        upgrades = (
+            "ALTER TABLE IF EXISTS daily_price_summary "
+            "ALTER COLUMN price_change_pct TYPE DECIMAL(10, 2)",
+            "ALTER TABLE IF EXISTS monthly_commodity_summary "
+            "ALTER COLUMN price_volatility TYPE DECIMAL(10, 2)",
+        )
+
+        for stmt in upgrades:
+            logger.info(f"Applying schema upgrade: {stmt}")
+            connection.execute(text(stmt))
+
+        connection.commit()
+        logger.info("Warehouse schema upgrades applied successfully")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error upgrading schema: {e}")
+        connection.rollback()
+        return False
+
+
 def load_reference_data(connection=None) -> bool:
     """
     Load reference/master data into dimension tables.
@@ -203,6 +239,9 @@ def initialize_database(connection=None) -> bool:
     logger.info("Starting database initialization...")
 
     if not create_warehouse_schema(connection):
+        return False
+
+    if not upgrade_warehouse_schema(connection):
         return False
 
     if not create_analytical_views(connection):

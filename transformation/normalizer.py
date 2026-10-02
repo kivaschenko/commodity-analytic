@@ -60,7 +60,7 @@ class DataNormalizer:
         self.default_exchange_rates = {
             "USD": 1.0,
             "EUR": 1.10,  # EUR to USD
-            "UAH": 0.027,  # UAH to USD (default fallback)
+            "UAH": 0.022,  # UAH to USD (default fallback)
             "GBP": 1.27,
         }
 
@@ -85,7 +85,7 @@ class DataNormalizer:
         Args:
             base_currency: From currency (e.g., 'USD')
             quote_currency: To currency (e.g., 'UAH')
-            rate: Exchange rate (e.g., 37.0 for 1 USD = 37 UAH)
+            rate: Exchange rate (e.g., 44.5 for 1 USD = 44.5 UAH)
         """
         self.exchange_rates[f"{base_currency}_{quote_currency}"] = rate
         # Also set the inverse for conversions

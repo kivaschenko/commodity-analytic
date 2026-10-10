@@ -306,7 +306,8 @@ class TripoliLandParser(BaseParser):
                                 "extracted_at": extracted_at,
                             }
                         )
-
+                        logger.info("Appended Tripoli.Land record: %s", records[-1])
+            logger.info("Fetched %s records from Tripoli.Land", len(records))
             return records
         except Exception as exc:  # noqa: BLE001
             logger.error("Tripoli parsing failed for %s: %s", company_slug, exc)

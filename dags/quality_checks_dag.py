@@ -285,7 +285,8 @@ with DAG(
 
     decide = ChooseBranchOperator(
         task_id="decide_transformation_path",
-    )
+    ).choose_branch()
+
 
     trigger_transformation = TriggerDagRunOperator(
         task_id="trigger_transformation_dag",

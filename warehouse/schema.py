@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS daily_price_summary (
     volume DECIMAL(15, 2),
     
     price_change DECIMAL(10, 2),
-    price_change_pct DECIMAL(5, 2),
+    price_change_pct DECIMAL(10, 2),
     
     source_count INT,
     record_count INT,
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS monthly_commodity_summary (
     min_price DECIMAL(10, 2),
     max_price DECIMAL(10, 2),
     total_volume DECIMAL(15, 2),
-    price_volatility DECIMAL(5, 2),
+    price_volatility DECIMAL(10, 2),
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -283,7 +283,7 @@ Provides daily price changes and trends.
 | volume | DECIMAL | Trading volume |
 | prev_price | DECIMAL | Previous day price |
 | price_change | DECIMAL | Absolute change |
-| price_change_pct | DECIMAL | Percentage change |
+| price_change_pct | DECIMAL(10,2) | Percentage change |
 
 ### 4.2 Volatility View (v_commodity_volatility)
 Shows price volatility by commodity and time period.
@@ -293,7 +293,7 @@ Shows price volatility by commodity and time period.
 | commodity_name | VARCHAR | Commodity name |
 | year | INTEGER | Year |
 | month | INTEGER | Month |
-| price_volatility | DECIMAL | Standard deviation |
+| price_volatility | DECIMAL(10,2) | Standard deviation |
 | avg_volume | DECIMAL | Average volume |
 | price_range | DECIMAL | High-Low range |
 

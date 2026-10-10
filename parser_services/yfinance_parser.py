@@ -95,6 +95,8 @@ COMMODITIES: Dict[str, Dict[str, Any]] = {
     },
 }
 
+PERIODS = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
+
 
 class YFinanceParser(BaseParser):
     """Extracts Yahoo Finance market data and stages raw records to bronze."""
@@ -108,12 +110,12 @@ class YFinanceParser(BaseParser):
             storage_type=self.storage_type,
         )
 
-    def parse(self) -> List[Dict[str, Any]]:
+    def parse(self, period: str = '5d') -> List[Dict[str, Any]]:
         extracted_at = datetime.now(timezone.utc)
         rows: List[Dict[str, Any]] = []
 
         for name, cfg in COMMODITIES.items():
-            price_raw = self._fetch_price(cfg["ticker"])
+            price_raw = self._fetch_price(cfg["ticker"], period=period)
             if price_raw is None:
                 rows.append(
                     {
@@ -208,8 +210,8 @@ class YFinanceParser(BaseParser):
         logger.info("Yahoo Finance raw payload staged to %s", staged_path)
         return staged_path
 
-    def parse_and_stage(self, storage_type: str | None = None) -> Dict[str, Any]:
-        records = self.parse()
+    def parse_and_stage(self, storage_type: str | None = None, period: str = '5d') -> Dict[str, Any]:
+        records = self.parse(period=period)
         effective_storage = storage_type or self.storage_type
         if not records:
             return {
@@ -231,9 +233,14 @@ class YFinanceParser(BaseParser):
         }
 
     @staticmethod
-    def _fetch_price(ticker: str) -> float | None:
+    def _fetch_price(ticker: str, period: str = "5d", start: str = None, end: str = None) -> float | None:
         try:
-            history = yf.Ticker(ticker).history(period="5d")
+            dat = yf.Ticker(ticker)
+            if start is not None and end is not None:
+                # Use start/end dates
+                history = dat.history(start=start, end=end)
+            else:
+                history = dat.history(period=period)
             if history.empty:
                 logger.warning("No Yahoo data returned for %s", ticker)
                 return None

@@ -4,10 +4,13 @@ Phase 5: Data Pipeline Orchestration (Backfill & Recovery)
 
 Manual trigger for backfilling gaps or recovering from failures.
 """
+import logging
 
 from datetime import datetime, timedelta
 from airflow.sdk import DAG, task
 from airflow.sdk.definitions.param import ParamsDict
+
+from parser_services.yfinance_parser import YFinanceParser
 
 default_args = {
     "owner": "data-engineering",
@@ -17,6 +20,27 @@ default_args = {
     "retries": 3,
     "retry_delay": timedelta(minutes=10),
 }
+
+logger = logging.Logger(__name__)
+
+class ParserFactory:
+    @staticmethod
+    def get_parser(source_name: str):
+        if source_name == "yfinance":
+            from parser_services.yfinance_parser import YFinanceParser
+            return YFinanceParser(storage_type='minio')
+        if source_name == "graintradecomua":
+            from parser_services.graintradecomua_parser import GrainTradeComUaParser
+            return GrainTradeComUaParser(storage_type='minio')
+        if source_name == "currency":
+            from parser_services.currency_parser import CurrencyParser
+            return CurrencyParser(storage_type='minio')
+        if source_name == "tripoli_land":
+            from parser_services.tripoli_land_parser import TripoliLandParser
+            return TripoliLandParser(storage_type='minio')
+        # Add other parsers here as needed
+        raise ValueError(f"Unsupported source: {source_name}")
+
 
 with DAG(
     dag_id="backfill_dag",
@@ -30,19 +54,23 @@ with DAG(
     params=ParamsDict(
         dict(
             sources=["yfinance", "graintradecomua", "currency", "tripoli_land"],
+            start_date="2024-01-01",
+            end_date="2026-12-31",
         ),
     ),
 ) as dag:
 
     @task()
     def extract_historical_data(
-        sources="{{ params.sources }}", start_date=None, end_date="2026-12-31"
+        sources="{{ params.sources }}", start_date="{{ params.start_date }}", end_date="{{ params.end_date }}"
     ):
         """Extract historical data for date range and sources."""
-        # TODO: Implement historical extraction
-        # for source in sources:
-        #     parser = ParserFactory.get_parser(source)
-        #     data = parser.parse(start_date=start_date, end_date=end_date)
+        for source in sources:
+            logger.info("Run parsing for historical data of %", source)
+            parser = ParserFactory.get_parser(source)
+            data = parser.parse_and_stage(start_date=start_date, end_date=end_date)
+            logger.info("Fetched %s records of %s historical data. Status: %s. Storage type: %s. Path: %s", 
+                        (data['record_count'], data['source'], data['status'], data['storage_type'], data['storage_path']))
         return {
             "status": "extracted",
             "start_date": start_date,

@@ -271,7 +271,7 @@ class GrainTradeComUaParser(BaseParser):
                     "extracted_at": extracted_at,
                 }
             )
-
+            logger.info("Appended offer: %s", offers[-1])
         return offers
 
     def _parse_details_page(self, detail_url: str) -> str:

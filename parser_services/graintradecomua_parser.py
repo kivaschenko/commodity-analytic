@@ -16,6 +16,7 @@ from pandas import DataFrame
 
 from parser_services.base_parser import BaseParser
 from staging.staging_handler import StagingHandler
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class GrainTradeComUaParser(BaseParser):
     def __init__(
         self,
         source_name: str = "graintradecomua",
-        storage_type: str = "minio",
+        storage_type: str = settings.storage_type,
         parse_history: bool = True,
         pagination_limit: int = 10,
     ) -> None:
@@ -40,7 +41,7 @@ class GrainTradeComUaParser(BaseParser):
         self.parse_history = parse_history
         self.pagination_limit = pagination_limit
         self.offers_per_page = 14
-        self.bronze_bucket = os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        self.bronze_bucket = settings.bronze_bucket
         self.staging_handler = StagingHandler(
             staging_path=self.bronze_bucket,
             storage_type=self.storage_type,
@@ -122,7 +123,7 @@ class GrainTradeComUaParser(BaseParser):
         results: "List[Dict[str, Any]] | Any | DataFrame",
         filepath: str = "",
         file_ext: str = "json",
-        storage_type: str = "minio",
+        storage_type: str = self.storage_type,
     ) -> None:
         if isinstance(results, DataFrame):
             records = results.to_dict("records")
@@ -154,7 +155,7 @@ class GrainTradeComUaParser(BaseParser):
     def _stage_records(
         self,
         records: List[Dict[str, Any]],
-        storage_type: str,
+        storage_type: str = self.storage_type,
         file_ext: str = "json",
     ) -> str:
         handler = self.staging_handler

@@ -159,7 +159,7 @@ class YFinanceParser(BaseParser):
         results: "List[Dict[str, Any]] | Any | DataFrame",
         filepath: str = "",
         file_ext: str = "json",
-        storage_type: str = "minio",
+        storage_type: str = self.storage_type,
     ) -> None:
         if isinstance(results, DataFrame):
             records = results.to_dict("records")
@@ -191,7 +191,7 @@ class YFinanceParser(BaseParser):
     def _stage_records(
         self,
         records: List[Dict[str, Any]],
-        storage_type: str,
+        storage_type: str = self.storage_type,
         file_ext: str = "json",
     ) -> str:
         handler = self.staging_handler
@@ -210,7 +210,7 @@ class YFinanceParser(BaseParser):
         logger.info("Yahoo Finance raw payload staged to %s", staged_path)
         return staged_path
 
-    def parse_and_stage(self, storage_type: str | None = None, period: str = '5d') -> Dict[str, Any]:
+    def parse_and_stage(self, storage_type: str = self.storage_type, period: str = '5d') -> Dict[str, Any]:
         records = self.parse(period=period)
         effective_storage = storage_type or self.storage_type
         if not records:

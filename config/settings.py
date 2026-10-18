@@ -66,6 +66,7 @@ class Settings:
         self.log_level = "DEBUG"
         self.cache_enabled = False
         # Staging settings for development
+        self.storage_type = os.getenv("STORAGE_TYPE", "minio")
         self.storage_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
         self.storage_access_key = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
         self.storage_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
@@ -87,6 +88,7 @@ class Settings:
         self.log_level = "INFO"
         self.cache_enabled = True
         # Staging settings for staging environment
+        self.storage_type = os.getenv("STORAGE_TYPE", "minio")
         self.storage_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
         self.storage_access_key = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
         self.storage_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
@@ -106,6 +108,7 @@ class Settings:
         self.log_level = "WARNING"
         self.cache_enabled = True
         # Staging settings for production environment, use Hetzner Object Storage
+        self.storage_type = os.getenv("STORAGE_TYPE", "hetzner")
         self.storage_endpoint = os.getenv("HETZNER_STORAGE_ENDPOINT")
         self.storage_access_key = os.getenv("HETZNER_STORAGE_ACCESS_KEY")
         self.storage_secret_key = os.getenv("HETZNER_STORAGE_SECRET_KEY")

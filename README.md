@@ -61,6 +61,9 @@ source .env
 set +a
 source scripts/airflow-env.sh
 
+# For new project and empty database create the tables and views
+uv run python -m scripts.init_db
+
 # Create the Airflow metadata database and admin user.
 uv run bash scripts/airflow-setup.sh
 

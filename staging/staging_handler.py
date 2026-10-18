@@ -46,7 +46,7 @@ class StagingHandler:
             storage_service: Optional explicit storage service instance.
         """
         self.layer = layer.lower()
-        self.storage_type = storage_type.lower()
+        self.storage_type = storage_type.lower() if storage_type else settings.storage_type.lower()
         self.staging_path = (
             Path(staging_path) if staging_path else BASE_DIR / "staging_data"
         )

@@ -26,7 +26,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from config.settings import Environment, settings  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 
-logger = logging.getLogger(__name__)
+from logger import setup_logger  # noqa: E402
+
+logger = setup_logger(__name__)
 
 SOURCES = ["yfinance", "graintradecomua", "tripoli_land"]
 FX_SOURCE = "currency"
@@ -156,10 +158,12 @@ def _safe_ts(col_expr):
 
 
 def _normalize_silver_df(df, source_name: str):
+    logger.info("Normalizing silver DataFrame for source: %s", source_name)
     from pyspark.sql import functions as F
 
     fallback_source_name = source_name.replace("_", " ").title().replace("Comua", "ComUA")
     columns = set(df.columns)
+    logger.debug("Silver DataFrame columns: %s", columns)
 
     def existing_or_null(name: str):
         return F.col(name) if name in columns else F.lit(None).cast("string")

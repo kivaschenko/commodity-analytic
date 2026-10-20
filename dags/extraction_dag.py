@@ -39,33 +39,41 @@ with DAG(
     def extract_yfinance():
         """Extract commodity prices from Yahoo Finance."""
         from parser_services.yfinance_parser import YFinanceParser
+        from config.settings import settings
 
-        parser = YFinanceParser(storage_type="minio")
-        return parser.parse_and_stage(storage_type="minio")
+        current_storage_type = settings.storage_type
+        parser = YFinanceParser(storage_type=current_storage_type)
+        return parser.parse_and_stage()  # by default uses self.storage_type
 
     @task()
     def extract_graintradecomua():
         """Extract commodity prices from GrainTrade.com.ua."""
         from parser_services.graintradecomua_parser import GrainTradeComUaParser
+        from config.settings import settings
 
-        parser = GrainTradeComUaParser(storage_type="minio")
-        return parser.parse_and_stage(storage_type="minio")
+        current_storage_type = settings.storage_type
+        parser = GrainTradeComUaParser(storage_type=current_storage_type)
+        return parser.parse_and_stage()  # by default uses self.storage_type
 
     @task()
     def extract_currency():
         """Extract currency exchange rates."""
         from parser_services.currency_parser import CurrencyParser
+        from config.settings import settings
 
-        parser = CurrencyParser(storage_type="minio")
-        return parser.parse_and_stage(storage_type="minio")
+        current_storage_type = settings.storage_type
+        parser = CurrencyParser(storage_type=current_storage_type)
+        return parser.parse_and_stage()  # by default self.storage_type
 
     @task()
     def extract_tripoli_land():
         """Extract grain offer prices from Tripoli Land."""
         from parser_services.tripoli_land_parser import TripoliLandParser
+        from config.settings import settings
 
-        parser = TripoliLandParser(storage_type="minio")
-        return parser.parse_and_stage(storage_type="minio")
+        current_storage_type = settings.storage_type
+        parser = TripoliLandParser(storage_type=current_storage_type)
+        return parser.parse_and_stage()
 
     @task()
     def consolidate_extractions(

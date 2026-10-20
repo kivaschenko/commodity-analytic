@@ -19,15 +19,17 @@ import psycopg2
 import requests
 from airflow.sdk import DAG, task
 
+from logger import setup_logger
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.settings import settings  # noqa: E402
+from logger import setup_logger  # noqa: E402
 
-logger = logging.getLogger(__name__)
-
-TOP_N = 3
+logger = setup_logger(__name__)
+TOP_N = 10
 TELEGRAM_LIMIT = 4096
 
 default_args = {

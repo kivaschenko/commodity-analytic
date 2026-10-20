@@ -14,6 +14,7 @@ from pandas import DataFrame
 
 from parser_services.base_parser import BaseParser
 from staging.staging_handler import StagingHandler
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,10 @@ CURRENCY_API_MAPPING: Dict[str, str] = {
 class CurrencyParser(BaseParser):
     """Extracts FX rates from multiple providers and stages raw records to bronze."""
 
-    def __init__(self, source_name: str = "currency", storage_type: str = "minio") -> None:
+    def __init__(self, source_name: str = "currency", storage_type: str = settings.storage_type) -> None:
         self.source_name = source_name
         self.storage_type = storage_type
-        self.bronze_bucket = os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        self.bronze_bucket = settings.bronze_bucket
         self.staging_handler = StagingHandler(
             staging_path=self.bronze_bucket,
             storage_type=self.storage_type,
@@ -97,7 +98,7 @@ class CurrencyParser(BaseParser):
         results: "List[Dict[str, Any]] | Any | DataFrame",
         filepath: str = "",
         file_ext: str = "json",
-        storage_type: str = "minio",
+        storage_type: str = self.storage_type,
     ) -> None:
         if isinstance(results, DataFrame):
             records = results.to_dict("records")
@@ -129,7 +130,7 @@ class CurrencyParser(BaseParser):
     def _stage_records(
         self,
         records: List[Dict[str, Any]],
-        storage_type: str,
+        storage_type: str = self.storage_type,
         file_ext: str = "json",
     ) -> str:
         handler = self.staging_handler

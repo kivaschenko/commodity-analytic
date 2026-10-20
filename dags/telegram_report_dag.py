@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 import psycopg2
 import requests
 from airflow.sdk import DAG, task
+
 from logger import setup_logger
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

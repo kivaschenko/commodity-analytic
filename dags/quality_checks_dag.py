@@ -15,6 +15,10 @@ from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOpe
 from airflow.providers.standard.operators.branch import BaseBranchOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 
+from logger import setup_logger
+
+logger = setup_logger(__name__)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -76,11 +80,14 @@ class ChooseBranchOperator(BaseBranchOperator):
         super().__init__(*args, **kwargs)
 
     def choose_branch(self, context):
+        logger.info("Start to choose next pipeline branch...")
         staging_data = context['ti'].xcom_pull(task_ids='load_staging_data')
         for source, payload in staging_data.items():
             status = payload["status"]
             if status.get("status") != "active":
+                logger.info("Choosen trigger_transformation branch.")
                 return "trigger_transformation"
+        logger.info("Chosen halt_transformation.")
         return "halt_transformation"
 
 
@@ -103,6 +110,7 @@ with DAG(
 
     @task()
     def load_staging_data():
+        logger.info("Start to load staged data from bronze_layer...")
         handler = StagingHandler(storage_type=_storage_type(), layer="bronze")
         data = {}
         for source in SOURCES:
@@ -110,7 +118,8 @@ with DAG(
             records = []
             if status.get("status") == "active":
                 records = handler.load_latest_records(source)
-            data[source] = {"status": status, "records": records}
+            data[source] = {"status": status, "records": records, "number_of_records": len(records)}
+        logger.info("Got staging data: %s", data)
         return data
 
     @task()
@@ -147,14 +156,17 @@ with DAG(
                 freshness_notes[source] = f"fresh ({age})"
 
         status = "passed" if not stale_sources else "failed"
-        return {
+        result = {
             "status": status,
             "stale_sources": len(stale_sources),
             "details": freshness_notes,
         }
+        logger.info("Freshness check result: %s", result)
+        return result
 
     @task()
     def check_completeness(staging_data):
+        logger.info("Start completeness check on staged data...")
         missing_counts = {}
         total_missing = 0
 
@@ -170,14 +182,13 @@ with DAG(
             total_missing += missing
 
         status = "passed" if total_missing == 0 else "failed"
-        return {
-            "status": status,
-            "missing_fields": total_missing,
-            "details": missing_counts,
-        }
+        result = {"status": status, "missing_fields": total_missing, "details": missing_counts}
+        logger.info("Completeness check result: %s", result)
+        return result
 
     @task()
     def check_uniqueness(staging_data):
+        logger.info("Start uniqueness check on staged data...")
         duplicate_counts = {}
         total_duplicates = 0
 
@@ -196,14 +207,13 @@ with DAG(
             total_duplicates += duplicates
 
         status = "passed" if total_duplicates == 0 else "failed"
-        return {
-            "status": status,
-            "duplicates": total_duplicates,
-            "details": duplicate_counts,
-        }
+        result = {"status": status, "duplicates": total_duplicates, "details": duplicate_counts}
+        logger.info("Uniqueness check result: %s", result)
+        return result
 
     @task()
     def check_data_ranges(staging_data):
+        logger.info("Start data ranges check on staged data...")
         out_of_range = {}
         total_issues = 0
 
@@ -226,11 +236,13 @@ with DAG(
             total_issues += issues
 
         status = "passed" if total_issues == 0 else "failed"
-        return {
+        result = {
             "status": status,
             "out_of_range": total_issues,
             "details": out_of_range,
         }
+        logger.info("Data ranges check result: %s", result)
+        return result
 
     @task()
     def generate_quality_report(freshness, completeness, uniqueness, ranges):

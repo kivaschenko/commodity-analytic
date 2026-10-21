@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import Environment, settings  # noqa: E402
+from config.settings import settings  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 
 from logger import setup_logger  # noqa: E402
@@ -34,10 +34,6 @@ SOURCES = ["yfinance", "graintradecomua", "tripoli_land"]
 FX_SOURCE = "currency"
 FX_ALLOWED_BASE_CURRENCIES = ("USD", "EUR")
 FX_QUOTE_CURRENCY = "UAH"
-
-
-def _storage_type() -> str:
-    return "hetzner" if settings.env == Environment.PROD else "minio"
 
 
 def _parse_database_url(db_url: str) -> Dict[str, Any]:

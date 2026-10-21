@@ -19,8 +19,6 @@ import psycopg2
 import requests
 from airflow.sdk import DAG, task
 
-from logger import setup_logger
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))

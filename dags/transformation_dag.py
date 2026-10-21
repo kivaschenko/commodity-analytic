@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import settings, Environment  # noqa: E402
+from config.settings import settings  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 
 logging.basicConfig(
@@ -36,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_CURRENCY_FX_RATE = 43.0  # Default USD/UAH rate if currency data is missing
+DEFAULT_CURRENCY_FX_RATE = 45.5  # Default USD/UAH rate if currency data is missing
 
 default_args = {
     "owner": "data-engineering",
@@ -445,8 +445,7 @@ with DAG(
         if not data:
             return {"source": source, "status": "empty", "record_count": 0}
 
-        storage_type = "hetzner" if settings.env == Environment.PROD else "minio"
-        handler = StagingHandler(storage_type=storage_type, layer="silver")
+        handler = StagingHandler(layer="silver")
         staged_path = handler.stage_raw_data(
             data=data, source_name=source, file_format="parquet"
         )

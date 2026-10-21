@@ -15,17 +15,16 @@ from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOpe
 from airflow.providers.standard.operators.branch import BaseBranchOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 
-from config.settings import settings
-from logger import setup_logger
-
-logger = setup_logger(__name__)
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from config.settings import settings  # noqa: E402
+from logger import setup_logger  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 from monitoring.alerting import AlertManager  # noqa: E402
+
+logger = setup_logger(__name__)
 
 SOURCES = ["currency", "yfinance", "graintradecomua", "tripoli_land"]
 REQUIRED_FIELDS = {
@@ -83,7 +82,7 @@ class ChooseBranchOperator(BaseBranchOperator):
 
         if quality_report.get("overall_status") == "PASSED":
             logger.info("Quality checks passed; choosing trigger_transformation branch.")
-            return "trigger_transformation"
+            return "trigger_transformation_dag"
 
         logger.info("Quality checks failed; choosing halt_transformation branch.")
         return "halt_transformation"

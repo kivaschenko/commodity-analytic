@@ -5,12 +5,18 @@ Phase 5: Data Pipeline Orchestration (Backfill & Recovery)
 Manual trigger for backfilling gaps or recovering from failures.
 """
 import logging
+import sys
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from airflow.sdk import DAG, task
 from airflow.sdk.definitions.param import ParamsDict
 
-from parser_services.yfinance_parser import YFinanceParser
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from parser_services.yfinance_parser import YFinanceParser  # noqa: E402
 
 default_args = {
     "owner": "data-engineering",

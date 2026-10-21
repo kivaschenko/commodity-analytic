@@ -749,6 +749,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pyspark" },
+    { name = "python-dotenv" },
     { name = "sqlalchemy" },
     { name = "yfinance" },
 ]
@@ -765,6 +766,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0.6" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "pyspark", specifier = ">=4.2.0" },
+    { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "sqlalchemy", specifier = ">=2.1.1" },
     { name = "yfinance", specifier = ">=1.7.0" },
 ]

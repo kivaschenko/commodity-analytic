@@ -208,7 +208,7 @@ class TripoliLandParser(BaseParser):
                 "storage_type": self.storage_type,
                 "staged_path": None,
             }
-        staged_path = self._stage_records(records, storage_type=self.storage_type, file_ext="json")
+        staged_path = self._stage_records(records, file_ext="json")
         return {
             "status": "success",
             "source": self.source_name,

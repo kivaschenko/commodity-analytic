@@ -153,23 +153,22 @@ class GrainTradeComUaParser(BaseParser):
         logger.info("GrainTrade.com.ua raw payload staged to %s", staged_path)
         return staged_path
 
-    def parse_and_stage(self, storage_type: str | None = None) -> Dict[str, Any]:
+    def parse_and_stage(self) -> Dict[str, Any]:
         records = self.parse()
-        effective_storage = storage_type or self.storage_type
         if not records:
             return {
                 "status": "no_data",
                 "source": self.source_name,
                 "record_count": 0,
-                "storage_type": effective_storage,
+                "storage_type": self.storage_type,
                 "staged_path": None,
             }
-        staged_path = self._stage_records(records, storage_type=effective_storage, file_ext="json")
+        staged_path = self._stage_records(records, file_ext="json")
         return {
             "status": "success",
             "source": self.source_name,
             "record_count": len(records),
-            "storage_type": effective_storage,
+            "storage_type": self.storage_type,
             "staged_path": staged_path,
         }
 

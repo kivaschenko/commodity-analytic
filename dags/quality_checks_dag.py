@@ -15,6 +15,7 @@ from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOpe
 from airflow.providers.standard.operators.branch import BaseBranchOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 
+from config.settings import settings
 from logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -23,7 +24,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import settings, Environment  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 from monitoring.alerting import AlertManager  # noqa: E402
 
@@ -46,10 +46,6 @@ NUMERIC_FIELDS = {
     "graintradecomua": ["price_value"],
     "tripoli_land": ["price_uah_per_ton", "price_usd_per_ton"],
 }
-
-
-def _storage_type() -> str:
-    return "hetzner" if settings.env == Environment.PROD else "minio"
 
 
 def _parse_timestamp(value):
@@ -99,8 +95,8 @@ with DAG(
         "start_date": datetime(2025, 1, 1),
         "email": [settings.alert_email] if settings.alert_email else [],
         "email_on_failure": False,
-        "retries": 1,
-        "retry_delay": timedelta(minutes=5),
+        "retries": 3,
+        "retry_delay": timedelta(seconds=30),
     },
     description="Run data quality checks on extracted staging data before transformation",
     schedule=None,  # Triggered by extraction_dag completion
@@ -111,7 +107,7 @@ with DAG(
     @task()
     def load_staging_data():
         logger.info("Start to load staged data from bronze_layer...")
-        handler = StagingHandler(storage_type=_storage_type(), layer="bronze")
+        handler = StagingHandler(storage_type=settings.storage_type, layer="bronze")
         data = {}
         for source in SOURCES:
             status = handler.get_staging_status(source)

@@ -6,7 +6,7 @@ import os
 import logging
 from typing import Dict, Any
 from pathlib import Path
-from enum import Enum
+
 from dotenv import load_dotenv
 
 logging.basicConfig(
@@ -40,6 +40,7 @@ class Settings:
         self.email_enabled = True
         self.log_level = "WARNING"
         self.cache_enabled = True
+        self.storage_type = os.getenv("STORAGE_TYPE", "Undefined")
         self.storage_endpoint = os.getenv("STORAGE_ENDPOINT")
         self.storage_access_key = os.getenv("STORAGE_ACCESS_KEY")
         self.storage_secret_key = os.getenv("STORAGE_SECRET_KEY")
@@ -60,21 +61,41 @@ class Settings:
 
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all current settings."""
-        return {
+        settings_dict = {
             "environment": self.env,
             "database_url": self.database_url,
             "data_lake_path": self.data_lake_path,
             "warehouse_type": self.warehouse_type,
             "staging_enabled": self.staging_enabled,
             "quality_checks_enabled": self.quality_checks_enabled,
+            "slack_webhook": self.slack_webhook,
+            "email_enabled": self.email_enabled,
+            "cache_enabled": self.cache_enabled,
+            "storage_type": self.storage_type,
+            "storage_endpoint": self.storage_endpoint,
+            "storage_access_key": self.storage_access_key,
+            "storage_secret_key": self.storage_secret_key,
+            "storage_region": self.storage_region,
+            "bronze_bucket": self.bronze_bucket,
+            "silver_bucket": self.silver_bucket,
             "log_level": self.log_level,
             "smtp_server": self.smtp_server,
             "smtp_port": self.smtp_port,
             "smtp_user": self.smtp_user,
             "smtp_use_tls": self.smtp_use_tls,
             "alert_email": self.alert_email,
+            "alert_recipients": self.alert_recipients,
         }
+        return settings_dict
 
 
 # Global settings instance
 settings = Settings()
+
+if __name__ == "__main__":
+    # For testing purposes, print all settings
+    all_settings = settings.get_all_settings()
+    print("Current Application Settings:")
+    for key, value in all_settings.items():
+        print(f"{key}: {value}")
+    print(f"type of settings: {type(settings)}")

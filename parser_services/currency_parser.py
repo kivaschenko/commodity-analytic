@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-import logging
-import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List
 
 import requests
-from dotenv import load_dotenv
 from pandas import DataFrame
 
 from parser_services.base_parser import BaseParser
 from staging.staging_handler import StagingHandler
 from config.settings import settings
-
-logger = logging.getLogger(__name__)
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+from logger import logger
 
 CURRENCY_API_MAPPING: Dict[str, str] = {
     "NBU": "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json",
@@ -98,7 +90,6 @@ class CurrencyParser(BaseParser):
         results: "List[Dict[str, Any]] | Any | DataFrame",
         filepath: str = "",
         file_ext: str = "json",
-        storage_type: str = self.storage_type,
     ) -> None:
         if isinstance(results, DataFrame):
             records = results.to_dict("records")
@@ -113,12 +104,6 @@ class CurrencyParser(BaseParser):
             return
 
         handler = self.staging_handler
-        if storage_type != self.storage_type:
-            handler = StagingHandler(
-                staging_path=self.bronze_bucket,
-                storage_type=storage_type,
-            )
-
         enriched = handler.add_staging_metadata(records, source_name=self.source_name)
         staged_path = handler.stage_raw_data(
             data=enriched,
@@ -130,16 +115,9 @@ class CurrencyParser(BaseParser):
     def _stage_records(
         self,
         records: List[Dict[str, Any]],
-        storage_type: str = self.storage_type,
         file_ext: str = "json",
     ) -> str:
         handler = self.staging_handler
-        if storage_type != self.storage_type:
-            handler = StagingHandler(
-                staging_path=self.bronze_bucket,
-                storage_type=storage_type,
-            )
-
         enriched = handler.add_staging_metadata(records, source_name=self.source_name)
         staged_path = handler.stage_raw_data(
             data=enriched,
@@ -149,25 +127,24 @@ class CurrencyParser(BaseParser):
         logger.info("Currency raw payload staged to %s", staged_path)
         return staged_path
 
-    def parse_and_stage(self, storage_type: str | None = None) -> Dict[str, Any]:
+    def parse_and_stage(self) -> Dict[str, Any]:
         records = self.parse()
-        effective_storage = storage_type or self.storage_type
         if not records:
             return {
                 "status": "no_data",
                 "source": self.source_name,
                 "record_count": 0,
-                "storage_type": effective_storage,
+                "storage_type": self.storage_type,
                 "staged_path": None,
             }
 
-        staged_path = self._stage_records(records, storage_type=effective_storage, file_ext="json")
+        staged_path = self._stage_records(records, file_ext="json")
 
         return {
             "status": "success",
             "source": self.source_name,
             "record_count": len(records),
-            "storage_type": effective_storage,
+            "storage_type": self.storage_type,
             "staged_path": staged_path,
         }
 
@@ -332,3 +309,9 @@ class CurrencyParser(BaseParser):
             return float(value)
         except (TypeError, ValueError):
             return None
+
+
+if __name__ == "__main__":
+    parser = CurrencyParser()
+    results = parser.parse_and_stage()
+    print(results)

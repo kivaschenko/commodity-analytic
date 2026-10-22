@@ -39,11 +39,9 @@ with DAG(
     def extract_yfinance():
         """Extract commodity prices from Yahoo Finance."""
         from parser_services.yfinance_parser import YFinanceParser
-        from config.settings import settings
 
-        current_storage_type = settings.storage_type
-        parser = YFinanceParser(storage_type=current_storage_type)
-        return parser.parse_and_stage()  # by default uses self.storage_type
+        parser = YFinanceParser()
+        return parser.parse_and_stage()
 
     @task()
     def extract_graintradecomua():
@@ -53,26 +51,22 @@ with DAG(
 
         current_storage_type = settings.storage_type
         parser = GrainTradeComUaParser(storage_type=current_storage_type)
-        return parser.parse_and_stage()  # by default uses self.storage_type
+        return parser.parse_and_stage()
 
     @task()
     def extract_currency():
         """Extract currency exchange rates."""
         from parser_services.currency_parser import CurrencyParser
-        from config.settings import settings
 
-        current_storage_type = settings.storage_type
-        parser = CurrencyParser(storage_type=current_storage_type)
-        return parser.parse_and_stage()  # by default self.storage_type
+        parser = CurrencyParser()
+        return parser.parse_and_stage()
 
     @task()
     def extract_tripoli_land():
         """Extract grain offer prices from Tripoli Land."""
         from parser_services.tripoli_land_parser import TripoliLandParser
-        from config.settings import settings
 
-        current_storage_type = settings.storage_type
-        parser = TripoliLandParser(storage_type=current_storage_type)
+        parser = TripoliLandParser()
         return parser.parse_and_stage()
 
     @task()
@@ -96,7 +90,7 @@ with DAG(
         """Stage raw data to staging layer (bronze)."""
         from staging.staging_handler import StagingHandler
 
-        handler = StagingHandler(storage_type="minio")
+        handler = StagingHandler()
         per_source = {}
         total_record_count = 0
         active_staged_sources = 0

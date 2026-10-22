@@ -15,17 +15,16 @@ from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOpe
 from airflow.providers.standard.operators.branch import BaseBranchOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 
-from logger import setup_logger
-
-logger = setup_logger(__name__)
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import settings, Environment  # noqa: E402
+from config.settings import settings  # noqa: E402
+from logger import setup_logger  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 from monitoring.alerting import AlertManager  # noqa: E402
+
+logger = setup_logger(__name__)
 
 SOURCES = ["currency", "yfinance", "graintradecomua", "tripoli_land"]
 REQUIRED_FIELDS = {
@@ -46,10 +45,6 @@ NUMERIC_FIELDS = {
     "graintradecomua": ["price_value"],
     "tripoli_land": ["price_uah_per_ton", "price_usd_per_ton"],
 }
-
-
-def _storage_type() -> str:
-    return "hetzner" if settings.env == Environment.PROD else "minio"
 
 
 def _parse_timestamp(value):
@@ -81,13 +76,15 @@ class ChooseBranchOperator(BaseBranchOperator):
 
     def choose_branch(self, context):
         logger.info("Start to choose next pipeline branch...")
-        staging_data = context['ti'].xcom_pull(task_ids='load_staging_data')
-        for source, payload in staging_data.items():
-            status = payload["status"]
-            if status.get("status") != "active":
-                logger.info("Choosen trigger_transformation branch.")
-                return "trigger_transformation"
-        logger.info("Chosen halt_transformation.")
+        quality_report = context["ti"].xcom_pull(task_ids="generate_quality_report")
+        if not quality_report:
+            raise ValueError("Quality report is unavailable; cannot choose pipeline branch")
+
+        if quality_report.get("overall_status") == "PASSED":
+            logger.info("Quality checks passed; choosing trigger_transformation branch.")
+            return "trigger_transformation_dag"
+
+        logger.info("Quality checks failed; choosing halt_transformation branch.")
         return "halt_transformation"
 
 
@@ -99,8 +96,8 @@ with DAG(
         "start_date": datetime(2025, 1, 1),
         "email": [settings.alert_email] if settings.alert_email else [],
         "email_on_failure": False,
-        "retries": 1,
-        "retry_delay": timedelta(minutes=5),
+        "retries": 3,
+        "retry_delay": timedelta(seconds=30),
     },
     description="Run data quality checks on extracted staging data before transformation",
     schedule=None,  # Triggered by extraction_dag completion
@@ -111,7 +108,7 @@ with DAG(
     @task()
     def load_staging_data():
         logger.info("Start to load staged data from bronze_layer...")
-        handler = StagingHandler(storage_type=_storage_type(), layer="bronze")
+        handler = StagingHandler(storage_type=settings.storage_type, layer="bronze")
         data = {}
         for source in SOURCES:
             status = handler.get_staging_status(source)
@@ -297,8 +294,7 @@ with DAG(
 
     decide = ChooseBranchOperator(
         task_id="decide_transformation_path",
-    ).choose_branch()
-
+    )
 
     trigger_transformation = TriggerDagRunOperator(
         task_id="trigger_transformation_dag",

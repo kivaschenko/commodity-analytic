@@ -35,7 +35,7 @@ class StagingHandler:
     def __init__(
         self,
         staging_path: Union[str, Path, None] = None,
-        storage_type: str = "minio",
+        storage_type: str = settings.storage_type,  # 'minio', 'hetzner', or 'local' (local is not implemented yet)
         layer: str = "bronze",
     ):
         """

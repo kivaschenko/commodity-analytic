@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import Environment, settings  # noqa: E402
+from config.settings import settings  # noqa: E402
 from staging.staging_handler import StagingHandler  # noqa: E402
 
 from logger import setup_logger  # noqa: E402
@@ -34,10 +34,6 @@ SOURCES = ["yfinance", "graintradecomua", "tripoli_land"]
 FX_SOURCE = "currency"
 FX_ALLOWED_BASE_CURRENCIES = ("USD", "EUR")
 FX_QUOTE_CURRENCY = "UAH"
-
-
-def _storage_type() -> str:
-    return "hetzner" if settings.env == Environment.PROD else "minio"
 
 
 def _parse_database_url(db_url: str) -> Dict[str, Any]:
@@ -638,7 +634,7 @@ with DAG(
         Load the latest silver records per source and persist to local temp parquet files.
         Returns only a lightweight manifest to avoid large XCom payloads.
         """
-        handler = StagingHandler(storage_type=_storage_type(), layer="silver")
+        handler = StagingHandler(layer="silver")
         run_dir = Path(tempfile.gettempdir()) / "warehouse_silver" / datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
         run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -664,7 +660,7 @@ with DAG(
             total_count += count
 
         # Keep currency in bronze and load a lightweight parquet snapshot for FX dimension upsert.
-        currency_handler = StagingHandler(storage_type=_storage_type(), layer="bronze")
+        currency_handler = StagingHandler(layer="bronze")
         currency_records = currency_handler.load_latest_records(FX_SOURCE)
         currency_count = len(currency_records)
         currency_path = run_dir / f"{FX_SOURCE}.parquet"

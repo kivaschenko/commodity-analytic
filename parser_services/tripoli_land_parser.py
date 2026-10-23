@@ -2,25 +2,20 @@
 
 from __future__ import annotations
 
-import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List
 
 import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 from pandas import DataFrame
 
 from parser_services.base_parser import BaseParser
 from staging.staging_handler import StagingHandler
-
-logger = logging.getLogger(__name__)
+from config.settings import settings
+from logger import logger
 
 BASE_URL = "https://tripoli.land"
-BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
 
 COMPANIES: Dict[str, str] = {
     "nibulon": "Нібулон",
@@ -120,13 +115,14 @@ GRAIN_NAME_MAPPING: Dict[str, str] = {
 class TripoliLandParser(BaseParser):
     """Extracts grain offer prices from Tripoli Land and stages raw records to bronze."""
 
-    def __init__(self, source_name: str = "tripoli_land", storage_type: str = "minio") -> None:
+    def __init__(self, source_name: str = "tripoli_land", storage_type: str = settings.storage_type) -> None:
         self.source_name = source_name
         self.storage_type = storage_type
-        self.bronze_bucket = os.getenv("MINIO_BUCKET_BRONZE", "bronze-layer")
+        self.bronze_bucket = settings.bronze_bucket
         self.staging_handler = StagingHandler(
             staging_path=self.bronze_bucket,
             storage_type=self.storage_type,
+            layer="bronze"
         )
         self.headers = {
             "User-Agent": (
@@ -138,7 +134,6 @@ class TripoliLandParser(BaseParser):
     def parse(self) -> List[Dict[str, Any]]:
         extracted_at = datetime.now(timezone.utc).isoformat()
         rows: List[Dict[str, Any]] = []
-
         for company_slug, company_name in COMPANIES.items():
             company_rows = self._parse_company(company_slug, company_name, extracted_at)
             if not company_rows:
@@ -159,9 +154,7 @@ class TripoliLandParser(BaseParser):
                     }
                 )
                 continue
-
             rows.extend(company_rows)
-
         logger.info("Fetched %s Tripoli Land records", len(rows))
         return rows
 
@@ -170,7 +163,6 @@ class TripoliLandParser(BaseParser):
         results: "List[Dict[str, Any]] | Any | DataFrame",
         filepath: str = "",
         file_ext: str = "json",
-        storage_type: str = "minio",
     ) -> None:
         if isinstance(results, DataFrame):
             records = results.to_dict("records")
@@ -183,14 +175,7 @@ class TripoliLandParser(BaseParser):
         if not records:
             logger.warning("No Tripoli Land records to stage")
             return
-
         handler = self.staging_handler
-        if storage_type != self.storage_type:
-            handler = StagingHandler(
-                staging_path=self.bronze_bucket,
-                storage_type=storage_type,
-            )
-
         enriched = handler.add_staging_metadata(records, source_name=self.source_name)
         staged_path = handler.stage_raw_data(
             data=enriched,
@@ -202,16 +187,9 @@ class TripoliLandParser(BaseParser):
     def _stage_records(
         self,
         records: List[Dict[str, Any]],
-        storage_type: str,
         file_ext: str = "json",
     ) -> str:
         handler = self.staging_handler
-        if storage_type != self.storage_type:
-            handler = StagingHandler(
-                staging_path=self.bronze_bucket,
-                storage_type=storage_type,
-            )
-
         enriched = handler.add_staging_metadata(records, source_name=self.source_name)
         staged_path = handler.stage_raw_data(
             data=enriched,
@@ -221,25 +199,22 @@ class TripoliLandParser(BaseParser):
         logger.info("Tripoli Land raw payload staged to %s", staged_path)
         return staged_path
 
-    def parse_and_stage(self, storage_type: str | None = None) -> Dict[str, Any]:
+    def parse_and_stage(self) -> Dict[str, Any]:
         records = self.parse()
-        effective_storage = storage_type or self.storage_type
         if not records:
             return {
                 "status": "no_data",
                 "source": self.source_name,
                 "record_count": 0,
-                "storage_type": effective_storage,
+                "storage_type": self.storage_type,
                 "staged_path": None,
             }
-
-        staged_path = self._stage_records(records, storage_type=effective_storage, file_ext="json")
-
+        staged_path = self._stage_records(records, file_ext="json")
         return {
             "status": "success",
             "source": self.source_name,
             "record_count": len(records),
-            "storage_type": effective_storage,
+            "storage_type": self.storage_type,
             "staged_path": staged_path,
         }
 
@@ -264,32 +239,25 @@ class TripoliLandParser(BaseParser):
                     continue
                 if header_row is None:
                     continue
-
                 columns = [
                     th.text.strip()
                     for th in header_row.find_all(["th", "td"])[1:]
                 ]
-
                 for row in table.find_all("tr")[1:]:
                     cells = row.find_all("td")
                     if len(cells) < 2:
                         continue
-
                     location_cell = cells[0]
                     storage_location = location_cell.b.text.strip() if location_cell.b else ""
                     address_region = location_cell.p.text.strip() if location_cell.p else ""
-
                     for idx in range(1, len(cells)):
                         if idx >= len(columns):
                             continue
-
                         culture_ua = columns[idx].strip()
                         raw_price = cells[idx].text.strip().replace(" ", "")
                         if not raw_price or raw_price == "-":
                             continue
-
                         numeric_price = self._to_float(raw_price.replace(",", "."))
-
                         records.append(
                             {
                                 "company_slug": company_slug,

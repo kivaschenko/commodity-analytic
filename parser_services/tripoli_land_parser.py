@@ -122,6 +122,7 @@ class TripoliLandParser(BaseParser):
         self.staging_handler = StagingHandler(
             staging_path=self.bronze_bucket,
             storage_type=self.storage_type,
+            layer="bronze"
         )
         self.headers = {
             "User-Agent": (

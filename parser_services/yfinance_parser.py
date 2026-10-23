@@ -99,10 +99,7 @@ class YFinanceParser(BaseParser):
         self.source_name = source_name
         self.storage_type = storage_type    
         self.bronze_bucket = settings.bronze_bucket
-        self.staging_handler = StagingHandler(
-            staging_path=self.bronze_bucket,
-            storage_type=self.storage_type,
-        )
+        self.staging_handler = StagingHandler(staging_path=self.bronze_bucket, storage_type=self.storage_type, layer="bronze")
 
     def parse(self, period: str = '5d') -> List[Dict[str, Any]]:
         extracted_at = datetime.now(timezone.utc)
